@@ -15,17 +15,17 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "MeterMind — Financial intelligence for AI agents" },
+      { title: "MeterMind — Autonomous procurement for AI agents" },
       {
         name: "description",
         content:
-          "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment.",
+          "Give your agents a task and a budget. MeterMind discovers providers, compares price, quality and reliability, buys the best value and proves the savings.",
       },
-      { property: "og:title", content: "MeterMind — Financial intelligence for AI agents" },
+      { property: "og:title", content: "MeterMind — Autonomous procurement for AI agents" },
       {
         property: "og:description",
         content:
-          "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment.",
+          "Give your agents a task and a budget. MeterMind discovers providers, compares price, quality and reliability, buys the best value and proves the savings.",
       },
     ],
   }),

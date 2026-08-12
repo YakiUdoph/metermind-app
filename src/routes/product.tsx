@@ -6,16 +6,16 @@ import { Explainability } from "@/components/sections";
 export const Route = createFileRoute("/product")({
   head: () => ({
     meta: [
-      { title: "Product — MeterMind spending control surface" },
+      { title: "Console — MeterMind procurement intelligence" },
       {
         name: "description",
         content:
-          "Explore the MeterMind console: agent budgets, live payment decisions, savings intelligence and full transaction explainability.",
+          "Explore the MeterMind console: total savings, provider intelligence, recent procurements, automatic optimizations and full purchase explainability.",
       },
-      { property: "og:title", content: "Product — MeterMind spending control surface" },
+      { property: "og:title", content: "Console — MeterMind procurement intelligence" },
       {
         property: "og:description",
-        content: "Agent budgets, live payment decisions, savings intelligence and audit trail.",
+        content: "Savings, provider intelligence, procurement history and optimizations.",
       },
     ],
   }),
@@ -29,7 +29,7 @@ function ProductPage() {
         <Eyebrow>Console</Eyebrow>
         <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4">
           <h1 className="text-[32px] leading-[1.1] text-paper md:text-[42px]">
-            One financial brain for every AI agent.
+            One procurement brain for every AI agent.
           </h1>
           <div className="hidden shrink-0 items-center gap-2 rounded border border-border bg-carbon px-2.5 py-1.5 md:flex">
             <LiveDot />
@@ -37,8 +37,8 @@ function ProductPage() {
           </div>
         </div>
         <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ash">
-          Navigate the sidebar, filter decisions and open any transaction to see exactly why
-          MeterMind approved, blocked or re-routed the payment.
+          Navigate the sidebar, browse provider intelligence and open any procurement to see which
+          providers were compared and why one won.
         </p>
         <div className="mt-8">
           <Dashboard />
