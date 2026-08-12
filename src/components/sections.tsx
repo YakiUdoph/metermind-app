@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Plug, Scale, Cpu, CreditCard, TrendingUp, Ban } from "lucide-react";
+import { ArrowRight, Check, Plug, Scale, Cpu, CreditCard, TrendingUp, Ban, Sparkles } from "lucide-react";
 import { Section, SectionHead, Btn, BtnLink, Eyebrow, LiveDot } from "./primitives";
 import { Dashboard } from "./Dashboard";
 import { CountUp } from "./charts";
-import { savingsInsights, currency } from "@/lib/mock";
+import { savingsInsights, potentialMonthly, currency } from "@/lib/mock";
 import { Orb } from "./Orb";
 import { cn } from "@/lib/utils";
 
@@ -14,8 +14,8 @@ export function ProductSection() {
     <Section id="product">
       <SectionHead
         eyebrow="Product"
-        title="One financial brain for every AI agent."
-        sub="Budgets, policy, routing and audit in a single control surface — built for software that spends without a human in the loop."
+        title="One procurement brain for every AI agent."
+        sub="Discovery, provider comparison, purchasing and savings intelligence in a single control surface — built for software that buys without a human in the loop."
       />
       <div className="mt-10">
         <Dashboard />
@@ -27,33 +27,33 @@ export function ProductSection() {
 /* -------------------------------------------------------- explainability */
 
 const CHECKS = [
-  "Within monthly agent budget",
-  "Transaction below $50 maximum",
-  "Provider approved",
-  "Lower-cost route available",
+  "4 capable providers discovered",
+  "QuickSearch $0.020 — score 69, below quality floor",
+  "SearchX $0.080 — score 92, 2x the price",
+  "DataFlow $0.040 — score 94, best value",
 ];
 
 export function Explainability() {
   return (
     <Section id="explainability">
       <SectionHead
-        eyebrow="Decision explainability"
-        title="Every dollar has a reason."
-        sub="MeterMind doesn't merely move money. It evaluates budget, policy, provider, price and risk before a payment ever executes — and records the reasoning."
+        eyebrow="Procurement explainability"
+        title="Every purchase has a reason."
+        sub="MeterMind compares every capable provider on price, quality, reliability and latency, buys the best value and records exactly why."
       />
 
       <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-[1fr_1fr_0.9fr]">
         <div className="bg-carbon p-6">
-          <Eyebrow>Payment request</Eyebrow>
+          <Eyebrow>Task</Eyebrow>
           <div className="mt-4 space-y-3">
             <Row k="Agent" v="Research Agent" />
-            <Row k="Amount" v="$21.80" mono />
-            <Row k="Purpose" v="AI inference" />
+            <Row k="Budget" v="$1.00" mono />
+            <Row k="Needs" v="Web research" />
           </div>
         </div>
 
         <div className="bg-carbon p-6">
-          <Eyebrow>MeterMind analysis</Eyebrow>
+          <Eyebrow>Provider comparison</Eyebrow>
           <ul className="mt-4 space-y-2.5">
             {CHECKS.map((c, i) => (
               <li
@@ -69,24 +69,24 @@ export function Explainability() {
         </div>
 
         <div className="bg-obsidian p-6">
-          <Eyebrow>Decision</Eyebrow>
+          <Eyebrow>Selected</Eyebrow>
           <div className="mt-3 inline-flex items-center gap-2 rounded border border-lime/35 bg-lime/8 px-2 py-1 font-mono text-[11px] tracking-[0.12em] text-lime">
-            <Check size={11} strokeWidth={2.5} /> APPROVED
+            <Check size={11} strokeWidth={2.5} /> DATAFLOW
           </div>
           <dl className="mono-num mt-5 space-y-2 text-[13px]">
             <div className="flex justify-between text-ash">
-              <dt>Original expected cost</dt>
-              <dd className="line-through">$25.40</dd>
+              <dt>Comparable provider cost</dt>
+              <dd className="line-through">$0.080</dd>
             </div>
             <div className="flex justify-between text-mist">
-              <dt>Final cost</dt>
-              <dd>$21.80</dd>
+              <dt>Paid</dt>
+              <dd>$0.040</dd>
             </div>
           </dl>
           <div className="mt-5 border-t border-border pt-4">
             <Eyebrow>Saved</Eyebrow>
             <div className="mt-1 text-[28px] text-lime">
-              <CountUp value={3.6} />
+              <CountUp value={0.04} decimals={3} />
             </div>
           </div>
         </div>
@@ -109,42 +109,52 @@ function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
 const STEPS = [
   {
     n: "01",
-    title: "Connect",
+    title: "Task",
     icon: Plug,
-    body: "Connect your agents and the services they pay for. One SDK call sits between intent and money.",
-    detail: ["metermind.connect('research-agent')"],
+    body: "Tell MeterMind what your agent needs.",
+    detail: ['"Research today\'s AI market news and create a competitive analysis."'],
   },
   {
     n: "02",
-    title: "Set rules",
-    icon: Scale,
-    body: "Describe your financial policy in plain language.",
-    detail: [
-      "Give Research Agent $1,000/month.",
-      "Never approve a transaction above $50.",
-      "Prefer cheaper providers when possible.",
-    ],
+    title: "Discover",
+    icon: Cpu,
+    body: "MeterMind finds services capable of completing the task.",
+    detail: ["4 providers discovered"],
   },
   {
     n: "03",
-    title: "MeterMind thinks",
-    icon: Cpu,
-    body: "An agent requests payment. MeterMind evaluates before anything executes.",
-    detail: ["budget", "rules", "provider", "price", "risk"],
+    title: "Compare",
+    icon: Scale,
+    body: "MeterMind compares price, quality, reliability, latency and historical performance.",
+    detail: ["price", "quality", "reliability", "latency", "history"],
   },
   {
     n: "04",
-    title: "Pay",
-    icon: CreditCard,
-    body: "Approved payments execute automatically over the best permitted route.",
-    detail: ["route: openai · direct", "latency 240ms"],
+    title: "Select",
+    icon: Sparkles,
+    body: "MeterMind chooses the best provider according to your priorities.",
+    detail: ["DataFlow · score 94"],
   },
   {
     n: "05",
-    title: "Learn & optimize",
+    title: "Buy",
+    icon: CreditCard,
+    body: "The required service is purchased automatically.",
+    detail: ["paid $0.040 · x402"],
+  },
+  {
+    n: "06",
+    title: "Measure",
     icon: TrendingUp,
-    body: "MeterMind tracks every decision and surfaces where the spend can shrink.",
-    detail: ["-15.3% monthly spend"],
+    body: "MeterMind records cost, performance and outcome.",
+    detail: ["saved $0.040", "420ms"],
+  },
+  {
+    n: "07",
+    title: "Learn",
+    icon: Ban,
+    body: "Future procurement decisions improve using historical performance.",
+    detail: ["every purchase becomes intelligence"],
   },
 ];
 
@@ -153,7 +163,7 @@ export function HowItWorks() {
     <Section id="how-it-works">
       <SectionHead
         eyebrow="How it works"
-        title="From intent to payment, in five controlled steps."
+        title="From task to result, in seven autonomous steps."
       />
       <ol className="mt-12 space-y-px overflow-hidden rounded-xl border border-border bg-border">
         {STEPS.map((s) => {
@@ -191,14 +201,16 @@ export function HowItWorks() {
 
 /* ---------------------------------------------------------- rule builder */
 
-const SENTENCE = `Give my research agents $1,000 per month.
-Never let them spend more than $50 at once.
-Prefer cheaper AI providers when quality is similar.`;
+const SENTENCE = `Give my research agents a $1,000 monthly budget.
+Prioritize balanced quality and price.
+Never use providers below 95% reliability.`;
 
 const PARSED = [
   { label: "Monthly budget", value: "$1,000" },
-  { label: "Transaction limit", value: "$50" },
-  { label: "Optimization", value: "Prefer lower cost" },
+  { label: "Priority", value: "Balanced" },
+  { label: "Minimum reliability", value: "95%" },
+  { label: "Auto-switch", value: "Enabled" },
+  { label: "Maximum single purchase", value: "$50" },
 ];
 
 export function RuleBuilder() {
@@ -213,9 +225,9 @@ export function RuleBuilder() {
   return (
     <Section id="rules">
       <SectionHead
-        eyebrow="Natural-language rules"
-        title="Financial controls without financial complexity."
-        sub="Write the policy the way you'd say it. MeterMind compiles it into enforceable budget and routing controls."
+        eyebrow="Procurement preferences"
+        title="Describe how your agents should buy."
+        sub="Write your preferences the way you'd say them. MeterMind compiles them into procurement rules that guide every purchase."
       />
 
       <div className="mt-10 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
@@ -229,7 +241,7 @@ export function RuleBuilder() {
             }}
             rows={5}
             spellCheck={false}
-            aria-label="Describe your spending policy"
+            aria-label="Describe your procurement preferences"
             className="mt-3 w-full resize-none rounded-md border border-border bg-void px-3.5 py-3 text-[15px] leading-relaxed text-mist outline-none transition-colors duration-200 focus:border-lime/50"
           />
           <div className="mt-3 flex items-center gap-3">
@@ -237,7 +249,7 @@ export function RuleBuilder() {
               {state === "thinking" ? "Compiling…" : "Create Rules"}
             </Btn>
             <span className="font-mono text-[10px] tracking-[0.12em] text-smoke uppercase">
-              {state === "done" ? "3 rules compiled" : "no active draft"}
+              {state === "done" ? "5 preferences compiled" : "no active draft"}
             </span>
           </div>
         </div>
@@ -278,11 +290,11 @@ export function Savings() {
   return (
     <Section id="savings">
       <SectionHead
-        eyebrow="Savings intelligence"
+        eyebrow="Optimization intelligence"
         title={
           <>
-            MeterMind doesn't just spend.
-            <span className="block text-fog">It finds waste.</span>
+            Your agents spend.
+            <span className="block text-fog">MeterMind optimizes.</span>
           </>
         }
       />
@@ -290,14 +302,14 @@ export function Savings() {
         <div className="surface rounded-xl border-lime/20 bg-lime/[0.04] p-6">
           <Eyebrow>Potential monthly savings</Eyebrow>
           <div className="mt-3 text-[44px] leading-none text-lime">
-            <CountUp value={1284} decimals={0} />
+            <CountUp value={potentialMonthly} decimals={0} />
           </div>
           <p className="mt-4 max-w-xs text-[13px] leading-relaxed text-ash">
-            Identified across 12 agents and 6 providers in the current billing period.
+            Identified across 12 agents and 18 providers in the current billing period.
           </p>
           <div className="mt-6">
             <BtnLink to="/product" variant="ghost" size="sm">
-              View Savings Opportunities <ArrowRight size={13} />
+              View Optimizations <ArrowRight size={13} />
             </BtnLink>
           </div>
         </div>
@@ -323,16 +335,16 @@ export function Savings() {
 /* -------------------------------------------------------------- pricing */
 
 const TIERS = [
-  { name: "Free", price: "$0", note: "For testing MeterMind.", features: ["1 agent", "Basic spending limits", "7-day activity history"] },
-  { name: "Pro", price: "$15", suffix: "/month", note: "For individual builders and small teams.", features: ["5 agents", "Natural-language rules", "Savings intelligence", "Full audit trail"] },
-  { name: "Business", price: "$60", suffix: "/month", popular: true, note: "For companies running multiple agents.", features: ["Unlimited agents", "Payment routing optimization", "Policy engine", "Human override & approvals"] },
+  { name: "Free", price: "$0", note: "For testing MeterMind.", features: ["1 agent", "Basic procurement limits", "7-day activity history"] },
+  { name: "Pro", price: "$15", suffix: "/month", note: "For individual builders and small teams.", features: ["5 agents", "Natural-language preferences", "Provider intelligence", "Full procurement history"] },
+  { name: "Business", price: "$60", suffix: "/month", popular: true, note: "For companies running multiple agents.", features: ["Unlimited agents", "Automatic provider switching", "Optimization intelligence", "Custom quality thresholds"] },
   { name: "Enterprise", price: "Custom", note: "For larger organizations requiring custom controls, infrastructure and support.", features: ["Dedicated infrastructure", "Custom policy controls", "SSO & audit export", "Support SLA"] },
 ];
 
 export function Pricing() {
   return (
     <Section id="pricing">
-      <SectionHead eyebrow="Pricing" title="Priced for builders. Built for finance teams." />
+      <SectionHead eyebrow="Pricing" title="We make money when we save you money." />
       <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
         {TIERS.map((t) => (
           <div
@@ -370,28 +382,58 @@ export function Pricing() {
                 size="sm"
                 className="w-full"
               >
-                {t.name === "Enterprise" ? "Contact us" : "Start Building"}
+                {t.name === "Enterprise" ? "Contact us" : "Run a Task"}
               </BtnLink>
             </div>
           </div>
         ))}
       </div>
-      <p className="mt-4 text-[12px] text-smoke">
-        Usage-based fees may apply to automated payment infrastructure.
-      </p>
+      <div className="mt-5 grid gap-4 rounded-xl border border-border bg-carbon p-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <div>
+          <Eyebrow>Performance-based optimization</Eyebrow>
+          <p className="mt-2 max-w-md text-[13px] leading-relaxed text-ash">
+            MeterMind may charge up to 5% of verified savings created through procurement
+            optimization.
+          </p>
+        </div>
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-5">
+          {[
+            ["Expected cost", "$1,000"],
+            ["Optimized cost", "$600"],
+            ["Verified savings", "$400"],
+            ["MeterMind fee", "$20"],
+            ["Your net saving", "$380"],
+          ].map(([k, v], i) => (
+            <div key={k} className="bg-carbon px-3 py-3">
+              <dt className="eyebrow">{k}</dt>
+              <dd className={cn("mono-num mt-1 text-[15px]", i === 4 ? "text-lime" : "text-mist")}>
+                {v}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </Section>
   );
 }
 
 /* ----------------------------------------------------------- developers */
 
-const CODE = `const payment = await metermind.pay({
-  agent: "research-agent",
-  amount: 21.80,
-  service: "openai"
+const CODE = `const result = await metermind.procure({
+  task: "Research today's AI market news",
+  budget: 2.00,
+  priority: "balanced"
 });`;
 
-const CHECKLIST = ["Budget checked", "Rules checked", "Payment approved", "Best route selected"];
+const CHECKLIST = [
+  "Task understood",
+  "5 providers discovered",
+  "Providers compared",
+  "DataFlow selected",
+  "$0.040 paid",
+  "Task completed",
+  "$0.040 saved",
+];
 
 export function Developers() {
   const [step, setStep] = useState(0);
@@ -423,26 +465,26 @@ export function Developers() {
         eyebrow="Developers"
         title={
           <>
-            Built for agents.
-            <span className="block text-fog">Controlled by humans.</span>
+            One call buys the
+            <span className="block text-fog">best service available.</span>
           </>
         }
-        sub="A single call replaces ad-hoc API keys, shared cards and unmonitored spend."
+        sub="Describe the task and the budget. MeterMind handles discovery, comparison, purchase and measurement."
       />
       <div ref={ref} className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-[1.3fr_0.7fr]">
         <div className="bg-void p-0">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 py-2.5">
-            <span className="mono-num min-w-0 truncate text-[11px] text-smoke">payments.ts</span>
+            <span className="mono-num min-w-0 truncate text-[11px] text-smoke">procure.ts</span>
             <span className="shrink-0 font-mono text-[10px] tracking-[0.12em] text-smoke">TS</span>
           </div>
           <pre className="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-[1.7] text-mist">
             <code>
-              <span className="text-ash">const</span> payment ={" "}
+              <span className="text-ash">const</span> result ={" "}
               <span className="text-ash">await</span> metermind.
-              <span className="text-lime">pay</span>({"{"}
-              {"\n  "}agent: <span className="text-lime/80">"research-agent"</span>,{"\n  "}amount:{" "}
-              <span className="text-paper">21.80</span>,{"\n  "}service:{" "}
-              <span className="text-lime/80">"openai"</span>
+              <span className="text-lime">procure</span>({"{"}
+              {"\n  "}task: <span className="text-lime/80">"Research today's AI market news"</span>,
+              {"\n  "}budget: <span className="text-paper">2.00</span>,{"\n  "}priority:{" "}
+              <span className="text-lime/80">"balanced"</span>
               {"\n"}
               {"}"});
             </code>
@@ -472,7 +514,7 @@ export function Developers() {
             ))}
           </ul>
           <div className="mono-num mt-5 rounded border border-border bg-void px-3 py-2 text-[12px] text-fog">
-            → 200 OK · tx MM-2841
+            → 200 OK · procurement MM-2841
           </div>
         </div>
       </div>
@@ -484,10 +526,10 @@ export function Developers() {
 /* -------------------------------------------------------------- security */
 
 const CONTROLS = [
-  { title: "Budget Enforcement", body: "Every agent operates inside predefined limits.", icon: Wallet2 },
-  { title: "Policy Engine", body: "Define exactly what agents can and cannot purchase.", icon: Scale },
-  { title: "Audit Trail", body: "Every financial decision is recorded.", icon: Cpu },
-  { title: "Human Override", body: "Pause agents or override decisions when necessary.", icon: Ban },
+  { title: "Budget Controls", body: "MeterMind will not purchase when an agent's budget is exhausted.", icon: Wallet2 },
+  { title: "Quality Floors", body: "Providers below your minimum quality or reliability are never selected.", icon: Scale },
+  { title: "Purchase Limits", body: "Purchases above your maximum single-purchase limit are held for review.", icon: Cpu },
+  { title: "Procurement Audit", body: "Every purchase records the providers compared and why one won.", icon: Ban },
 ];
 
 function Wallet2(props: { size?: number; className?: string }) {
@@ -497,7 +539,7 @@ function Wallet2(props: { size?: number; className?: string }) {
 export function Security() {
   return (
     <Section id="security">
-      <SectionHead eyebrow="Control" title="Autonomous doesn't mean uncontrolled." />
+      <SectionHead eyebrow="Safeguards" title="Autonomous buying, inside your constraints." sub="Procurement constraints run quietly underneath every decision." />
       <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
         {CONTROLS.map((c) => {
           const Icon = c.icon;
@@ -523,17 +565,17 @@ export function FinalCta() {
       <div className="relative mx-auto flex max-w-[1200px] flex-col items-center px-5 py-24 text-center md:px-8">
         <Orb size={280} className="opacity-90" />
         <h2 className="mt-6 max-w-2xl text-[30px] leading-[1.1] text-paper md:text-[42px]">
-          Give your agents financial intelligence.
+          An intelligent purchasing layer for the machine economy.
         </h2>
         <p className="mt-4 text-[15px] text-ash">
-          Set the rules. MeterMind handles the decisions.
+          Give your agents a task and a budget. MeterMind finds the best way to buy.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <BtnLink to="/product">
-            Start Building <ArrowRight size={14} />
+          <BtnLink to="/run-task">
+            Run a Task <ArrowRight size={14} />
           </BtnLink>
           <BtnLink to="/product" variant="ghost">
-            Explore the Demo
+            Explore the Console
           </BtnLink>
         </div>
       </div>

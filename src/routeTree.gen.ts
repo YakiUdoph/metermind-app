@@ -14,6 +14,7 @@ import { Route as DevelopersRouteImport } from './routes/developers'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProductRouteImport } from './routes/product'
+import { Route as RunTaskRouteImport } from './routes/run-task'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const ProductRoute = ProductRouteImport.update({
   path: '/product',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RunTaskRoute = RunTaskRouteImport.update({
+  id: '/run-task',
+  path: '/run-task',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/how-it-works': typeof HowItWorksRoute
   '/pricing': typeof PricingRoute
   '/product': typeof ProductRoute
+  '/run-task': typeof RunTaskRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/how-it-works': typeof HowItWorksRoute
   '/pricing': typeof PricingRoute
   '/product': typeof ProductRoute
+  '/run-task': typeof RunTaskRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,14 +70,33 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/pricing': typeof PricingRoute
   '/product': typeof ProductRoute
+  '/run-task': typeof RunTaskRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/developers' | '/how-it-works' | '/pricing' | '/product'
+  fullPaths:
+    | '/'
+    | '/developers'
+    | '/how-it-works'
+    | '/pricing'
+    | '/product'
+    | '/run-task'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/developers' | '/how-it-works' | '/pricing' | '/product'
+  to:
+    | '/'
+    | '/developers'
+    | '/how-it-works'
+    | '/pricing'
+    | '/product'
+    | '/run-task'
   id:
-    '__root__' | '/' | '/developers' | '/how-it-works' | '/pricing' | '/product'
+    | '__root__'
+    | '/'
+    | '/developers'
+    | '/how-it-works'
+    | '/pricing'
+    | '/product'
+    | '/run-task'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -78,6 +105,7 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   PricingRoute: typeof PricingRoute
   ProductRoute: typeof ProductRoute
+  RunTaskRoute: typeof RunTaskRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -117,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/run-task': {
+      id: '/run-task'
+      path: '/run-task'
+      fullPath: '/run-task'
+      preLoaderRoute: typeof RunTaskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -126,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   PricingRoute: PricingRoute,
   ProductRoute: ProductRoute,
+  RunTaskRoute: RunTaskRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
