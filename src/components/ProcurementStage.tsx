@@ -1,18 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Orb } from "./Orb";
-import { demoProviders, WINNER, currency } from "@/lib/mock";
+import { demoProviders, currency } from "@/lib/mock";
+import { evaluateProcurement } from "@/domain/procurement/scoring";
 import { cn } from "@/lib/utils";
-
-const PHASES = [
-  "Understanding task…",
-  "Discovering providers…",
-  "Comparing 4 providers…",
-  "Evaluating price + quality + reliability…",
-  `${WINNER} selected`,
-  "Paying $0.040…",
-  "Service executing…",
-  "Complete · saved $0.040",
-];
 
 /** Positions for the four provider chips around the core (percent of box). */
 const SPOTS = [
@@ -26,6 +16,33 @@ export function ProcurementStage() {
   const [phase, setPhase] = useState(0);
   const [hover, setHover] = useState<string | null>(null);
 
+  const result = useMemo(() => {
+    return evaluateProcurement(
+      {
+        task: "Research today's AI market news",
+        budget: 1.0,
+        priority: "balanced",
+      },
+      demoProviders,
+    );
+  }, []);
+
+  const winner = result.selectedProvider;
+  const winnerName = winner?.name || "DataFlow";
+  const winnerPrice = winner ? currency(winner.price, 3) : "$0.040";
+  const winnerSavings = currency(result.estimatedSavings, 3);
+
+  const PHASES = [
+    "Understanding task…",
+    "Discovering providers…",
+    "Comparing 4 providers…",
+    "Evaluating price + quality + reliability…",
+    `${winnerName} selected`,
+    `Paying ${winnerPrice}…`,
+    "Service executing…",
+    `Complete · est. savings ${winnerSavings}`,
+  ];
+
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setPhase(PHASES.length - 1);
@@ -33,7 +50,7 @@ export function ProcurementStage() {
     }
     const id = setInterval(() => setPhase((p) => (p + 1) % PHASES.length), 1300);
     return () => clearInterval(id);
-  }, []);
+  }, [PHASES.length]);
 
   const revealed = phase >= 1;
   const decided = phase >= 4;
@@ -56,8 +73,11 @@ export function ProcurementStage() {
 
           {demoProviders.map((p, i) => {
             const spot = SPOTS[i]!;
-            const isWinner = p.name === WINNER;
+            const isWinner = p.name === winnerName;
             const dim = decided && !isWinner;
+            const evalP = result.rankedProviders.find((rp) => rp.name === p.name) || p;
+            const scoreToDisplay = "totalScore" in evalP ? (evalP as { totalScore: number }).totalScore : p.score;
+
             return (
               <div
                 key={p.name}
@@ -88,7 +108,9 @@ export function ProcurementStage() {
                 </div>
                 <div className="mono-num mt-1 flex items-center justify-between text-[11px] text-ash">
                   <span>{currency(p.price, 3)}</span>
-                  <span className={cn(isWinner ? "text-lime" : "text-smoke")}>Score {p.score}</span>
+                  <span className={cn(isWinner ? "text-lime font-medium" : "text-smoke")}>
+                    Score {scoreToDisplay}
+                  </span>
                 </div>
 
                 {hover === p.name ? (
@@ -100,11 +122,13 @@ export function ProcurementStage() {
                         ["Quality", `${p.quality}/100`],
                         ["Reliability", `${p.reliability}%`],
                         ["Latency", `${p.latency}ms`],
-                        ["Score", `${p.score}/100`],
+                        ["Engine Score", `${scoreToDisplay}/100`],
                       ].map(([k, v]) => (
                         <div key={k} className="flex justify-between gap-2">
                           <dt className="text-ash">{k}</dt>
-                          <dd className={k === "Score" ? "text-lime font-medium" : "text-mist"}>{v}</dd>
+                          <dd className={k === "Engine Score" ? "text-lime font-medium" : "text-mist"}>
+                            {v}
+                          </dd>
                         </div>
                       ))}
                     </dl>
@@ -134,20 +158,20 @@ export function ProcurementStage() {
       <dl className="mt-3 grid w-full max-w-md grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
         <div className="bg-carbon px-3 py-2.5">
           <dt className="eyebrow">Best value</dt>
-          <dd className={cn("mt-1 text-[14px]", decided ? "text-lime" : "text-smoke")}>
-            {decided ? WINNER : "—"}
+          <dd className={cn("mt-1 text-[14px]", decided ? "text-lime font-medium" : "text-smoke")}>
+            {decided ? winnerName : "—"}
           </dd>
         </div>
         <div className="bg-carbon px-3 py-2.5">
           <dt className="eyebrow">Paid</dt>
           <dd className={cn("mono-num mt-1 text-[14px]", paid ? "text-paper" : "text-smoke")}>
-            {paid ? "$0.040" : "—"}
+            {paid ? winnerPrice : "—"}
           </dd>
         </div>
         <div className="bg-carbon px-3 py-2.5">
           <dt className="eyebrow">Saved</dt>
-          <dd className={cn("mono-num mt-1 text-[14px]", done ? "text-lime" : "text-smoke")}>
-            {done ? "$0.040" : "—"}
+          <dd className={cn("mono-num mt-1 text-[14px]", done ? "text-lime font-medium" : "text-smoke")}>
+            {done ? winnerSavings : "—"}
           </dd>
         </div>
       </dl>
