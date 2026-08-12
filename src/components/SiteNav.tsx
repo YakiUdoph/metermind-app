@@ -45,13 +45,13 @@ export function SiteNav() {
           <span className="text-[15px] tracking-[-0.01em]">MeterMind</span>
         </Link>
 
-        <nav className="hidden justify-center gap-1 md:flex">
+        <nav className="hidden justify-center gap-1 md:flex" aria-label="Main Navigation">
           {links.map((l) => (
             <Link
               key={l.to}
               to={l.to}
-              className="rounded-md px-3 py-1.5 text-[13px] text-fog transition-colors duration-200 hover:bg-obsidian hover:text-paper"
-              activeProps={{ className: "text-paper bg-obsidian" }}
+              className="rounded-md px-3 py-1.5 text-[13px] text-fog transition-colors duration-200 hover:bg-obsidian hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime"
+              activeProps={{ className: "text-paper bg-obsidian font-medium" }}
             >
               {l.label}
             </Link>
@@ -61,7 +61,7 @@ export function SiteNav() {
         <div className="hidden items-center gap-2 md:flex">
           <Link
             to="/product"
-            className="rounded-md px-3 py-1.5 text-[13px] text-fog transition-colors hover:text-paper"
+            className="rounded-md px-3 py-1.5 text-[13px] text-fog transition-colors hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime"
           >
             Sign in
           </Link>
@@ -71,7 +71,7 @@ export function SiteNav() {
         </div>
 
         <button
-          className="col-start-3 flex h-9 w-9 items-center justify-center rounded-md border border-border text-mist md:hidden"
+          className="col-start-3 flex h-9 w-9 items-center justify-center rounded-md border border-border text-mist transition-colors hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime md:hidden"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}

@@ -19,6 +19,7 @@ export function Orb({ className = "", size = 520 }: { className?: string; size?:
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let w = 0;
     let h = 0;
+    let isVisible = true;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -31,6 +32,20 @@ export function Orb({ className = "", size = 520 }: { className?: string; size?:
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
+
+    // Pause drawing when canvas is scrolled off-screen or tab is backgrounded
+    const io = new IntersectionObserver(
+      (entries) => {
+        isVisible = entries[0]?.isIntersecting ?? true;
+      },
+      { threshold: 0.05 },
+    );
+    io.observe(canvas);
+
+    const onVisibilityChange = () => {
+      if (document.hidden) isVisible = false;
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     // pointer awareness (normalised -1..1), heavily damped
     const target = { x: 0, y: 0 };
@@ -194,13 +209,22 @@ export function Orb({ className = "", size = 520 }: { className?: string; size?:
       ctx.stroke();
       ctx.restore();
 
-      raf = requestAnimationFrame(draw);
+      if (!reduce && isVisible) {
+        raf = requestAnimationFrame(draw);
+      }
     };
-    raf = requestAnimationFrame(draw);
+
+    if (reduce) {
+      draw(performance.now());
+    } else {
+      raf = requestAnimationFrame(draw);
+    }
 
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pointermove", onMove);
     };
   }, []);

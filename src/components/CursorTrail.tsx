@@ -26,41 +26,56 @@ export function CursorTrail() {
     type P = { x: number; y: number; vx: number; vy: number; life: number; lime: boolean };
     let particles: P[] = [];
     let last = { x: 0, y: 0, has: false };
+    let raf = 0;
+    let isRunning = false;
+
+    const loop = () => {
+      if (particles.length === 0) {
+        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        isRunning = false;
+        return;
+      }
+
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      particles = particles.filter((p) => p.life > 0);
+      particles.forEach((p) => {
+        p.life -= 0.04;
+        p.x += p.vx;
+        p.y += p.vy;
+        const a = Math.max(0, p.life) * (p.lime ? 0.75 : 0.3);
+        ctx.fillStyle = p.lime ? `rgba(228,242,34,${a})` : `rgba(220,226,232,${a})`;
+        ctx.fillRect(p.x, p.y, 1.5, 1.5);
+      });
+      raf = requestAnimationFrame(loop);
+    };
+
+    const startLoop = () => {
+      if (!isRunning) {
+        isRunning = true;
+        raf = requestAnimationFrame(loop);
+      }
+    };
 
     const onMove = (e: PointerEvent) => {
-      if (e.pointerType !== "mouse") return;
+      if (e.pointerType !== "mouse" || document.hidden) return;
       if (last.has) {
         const d = Math.hypot(e.clientX - last.x, e.clientY - last.y);
-        if (d > 14 && particles.length < 60) {
+        if (d > 16 && particles.length < 40) {
           particles.push({
             x: e.clientX,
             y: e.clientY,
             vx: (Math.random() - 0.5) * 0.25,
             vy: (Math.random() - 0.5) * 0.25 - 0.1,
             life: 1,
-            lime: Math.random() < 0.28,
+            lime: Math.random() < 0.25,
           });
+          startLoop();
         }
       }
       last = { x: e.clientX, y: e.clientY, has: true };
     };
-    window.addEventListener("pointermove", onMove, { passive: true });
 
-    let raf = 0;
-    const loop = () => {
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      particles = particles.filter((p) => p.life > 0);
-      particles.forEach((p) => {
-        p.life -= 0.035;
-        p.x += p.vx;
-        p.y += p.vy;
-        const a = Math.max(0, p.life) * (p.lime ? 0.8 : 0.35);
-        ctx.fillStyle = p.lime ? `rgba(228,242,34,${a})` : `rgba(220,226,232,${a})`;
-        ctx.fillRect(p.x, p.y, 1.5, 1.5);
-      });
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
+    window.addEventListener("pointermove", onMove, { passive: true });
 
     return () => {
       cancelAnimationFrame(raf);

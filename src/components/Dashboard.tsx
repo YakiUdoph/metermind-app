@@ -200,17 +200,51 @@ function Filters({
   );
 }
 
-function ProcTable({ rows, onOpen }: { rows: Procurement[]; onOpen: (t: Procurement) => void }) {
+function ProcTable({
+  rows,
+  onOpen,
+  onResetFilter,
+}: {
+  rows: Procurement[];
+  onOpen: (t: Procurement) => void;
+  onResetFilter?: () => void;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-carbon px-6 py-12 text-center">
+        <div className="eyebrow">No procurements found</div>
+        <p className="mt-2 text-[13px] text-ash">No transactions match the selected filter criteria.</p>
+        {onResetFilter ? (
+          <button
+            onClick={onResetFilter}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-obsidian px-3 py-1.5 font-mono text-[11px] text-mist transition-colors hover:border-smoke hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime"
+          >
+            Reset filter
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full min-w-[760px] border-collapse text-left">
         <thead>
           <tr className="border-b border-border bg-obsidian/60">
-            {["Time", "Agent", "Task", "Provider", "Paid", "Saved", "Status", "Rail"].map((h) => (
-              <th key={h} className="eyebrow px-3 py-2.5 font-normal">
-                {h}
-              </th>
-            ))}
+            {["Time", "Agent", "Task", "Provider", "Paid", "Saved", "Status", "Rail"].map((h) => {
+              const isNum = h === "Paid" || h === "Saved";
+              return (
+                <th
+                  key={h}
+                  className={cn(
+                    "eyebrow px-3 py-2.5 font-normal",
+                    isNum && "text-right",
+                  )}
+                >
+                  {h}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -221,18 +255,21 @@ function ProcTable({ rows, onOpen }: { rows: Procurement[]; onOpen: (t: Procurem
                 key={t.id}
                 tabIndex={0}
                 role="button"
+                aria-label={`Procurement ${t.id} for ${t.agent}`}
                 onClick={() => onOpen(t)}
                 onKeyDown={(e) =>
                   (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen(t))
                 }
-                className="cursor-pointer border-b border-border/60 transition-colors duration-200 last:border-0 hover:bg-obsidian/70"
+                className="cursor-pointer border-b border-border/60 transition-colors duration-200 last:border-0 hover:bg-obsidian/70 focus-visible:bg-obsidian focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-lime"
               >
                 <td className="mono-num px-3 py-3 text-[12px] text-smoke">{t.time}</td>
                 <td className="px-3 py-3 text-[13px] text-paper">{t.agent}</td>
                 <td className="px-3 py-3 text-[13px] text-ash">{t.task}</td>
                 <td className="px-3 py-3 text-[13px] text-fog">{t.provider}</td>
-                <td className="mono-num px-3 py-3 text-[13px] text-mist">{currency(t.paid, 3)}</td>
-                <td className="mono-num px-3 py-3 text-[13px] text-lime">
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">
+                  {currency(t.paid, 3)}
+                </td>
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-lime">
                   {saved > 0 ? currency(saved, 3) : <span className="text-smoke">—</span>}
                 </td>
                 <td className="px-3 py-3">
@@ -418,11 +455,24 @@ function ProviderView({
                 "Score",
                 "Jobs",
                 "Price trend",
-              ].map((h) => (
-                <th key={h} className="eyebrow px-3 py-2.5 font-normal">
-                  {h}
-                </th>
-              ))}
+              ].map((h) => {
+                const isNum =
+                  h === "Price" ||
+                  h === "Quality" ||
+                  h === "Reliability" ||
+                  h === "Latency" ||
+                  h === "Score" ||
+                  h === "Jobs" ||
+                  h === "Price trend";
+                return (
+                  <th
+                    key={h}
+                    className={cn("eyebrow px-3 py-2.5 font-normal", isNum && "text-right")}
+                  >
+                    {h}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -431,33 +481,40 @@ function ProviderView({
                 key={p.id}
                 tabIndex={0}
                 role="button"
+                aria-label={`Select provider ${p.name}`}
                 onClick={() => setProviderId(p.id)}
                 onKeyDown={(e) =>
                   (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setProviderId(p.id))
                 }
                 className={cn(
-                  "cursor-pointer border-b border-border/60 transition-colors duration-200 last:border-0 hover:bg-obsidian/70",
+                  "cursor-pointer border-b border-border/60 transition-colors duration-200 last:border-0 hover:bg-obsidian/70 focus-visible:bg-obsidian focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-lime",
                   p.id === providerId && "bg-obsidian",
                 )}
               >
                 <td className="px-3 py-3 text-[13px] text-paper">{p.name}</td>
                 <td className="px-3 py-3 text-[13px] text-ash">{p.category}</td>
-                <td className="mono-num px-3 py-3 text-[13px] text-mist">{currency(p.price, 3)}</td>
-                <td className="mono-num px-3 py-3 text-[13px] text-mist">{p.quality}</td>
-                <td className="mono-num px-3 py-3 text-[13px] text-mist">{p.reliability}%</td>
-                <td className="mono-num px-3 py-3 text-[13px] text-fog">{p.latency}ms</td>
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">
+                  {currency(p.price, 3)}
+                </td>
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">{p.quality}</td>
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">
+                  {p.reliability}%
+                </td>
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-fog">
+                  {p.latency}ms
+                </td>
                 <td
                   className={cn(
-                    "mono-num px-3 py-3 text-[13px]",
+                    "mono-num px-3 py-3 text-right text-[13px]",
                     p.score >= 90 ? "text-lime" : "text-fog",
                   )}
                 >
                   {p.score}
                 </td>
-                <td className="mono-num px-3 py-3 text-[13px] text-fog">
+                <td className="mono-num px-3 py-3 text-right text-[13px] text-fog">
                   {p.jobs.toLocaleString("en-US")}
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-3 py-3 text-right">
                   <TrendTag trend={p.trend} />
                 </td>
               </tr>

@@ -65,41 +65,46 @@ export function ProcurementStage() {
                 onMouseEnter={() => setHover(p.name)}
                 onMouseLeave={() => setHover(null)}
                 className={cn(
-                  "pointer-events-auto absolute w-[132px] rounded-lg border px-2.5 py-2 backdrop-blur-sm transition-all duration-500",
+                  "pointer-events-auto absolute w-[138px] rounded-lg border px-3 py-2 backdrop-blur-md transition-all duration-500",
                   revealed ? "opacity-100" : "translate-y-1 opacity-0",
                   dim && "opacity-35",
                   decided && isWinner
-                    ? "border-lime/50 bg-lime/[0.08] shadow-[0_0_28px_-8px_var(--lime)]"
-                    : "border-border bg-void/80",
+                    ? "border-lime/60 bg-lime/[0.1] shadow-[0_0_24px_-6px_var(--lime)]"
+                    : "border-border bg-void/90",
                 )}
               >
-                <div
-                  className={cn(
-                    "truncate text-[12px]",
-                    decided && isWinner ? "text-lime" : "text-mist",
-                  )}
-                >
-                  {p.name}
+                <div className="flex items-center justify-between">
+                  <span
+                    className={cn(
+                      "truncate text-[12px] font-medium",
+                      decided && isWinner ? "text-lime" : "text-mist",
+                    )}
+                  >
+                    {p.name}
+                  </span>
+                  {decided && isWinner ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-lime" title="Best Value Selected" />
+                  ) : null}
                 </div>
-                <div className="mono-num mt-0.5 flex items-center justify-between text-[10px] text-smoke">
+                <div className="mono-num mt-1 flex items-center justify-between text-[11px] text-ash">
                   <span>{currency(p.price, 3)}</span>
-                  <span>Score {p.score}</span>
+                  <span className={cn(isWinner ? "text-lime" : "text-smoke")}>Score {p.score}</span>
                 </div>
 
                 {hover === p.name ? (
-                  <div className="absolute top-full left-0 z-10 mt-1.5 w-[150px] rounded-lg border border-border bg-carbon px-2.5 py-2 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.9)]">
-                    <div className="text-[12px] text-paper">{p.name}</div>
-                    <dl className="mono-num mt-1.5 space-y-1 text-[10px]">
+                  <div className="absolute top-full left-0 z-20 mt-1.5 w-[165px] rounded-lg border border-border bg-carbon p-3 shadow-2xl">
+                    <div className="text-[12px] font-medium text-paper">{p.name}</div>
+                    <dl className="mono-num mt-2 space-y-1 text-[11px]">
                       {[
                         ["Price", currency(p.price, 3)],
                         ["Quality", `${p.quality}/100`],
                         ["Reliability", `${p.reliability}%`],
                         ["Latency", `${p.latency}ms`],
-                        ["MeterMind score", `${p.score}/100`],
+                        ["Score", `${p.score}/100`],
                       ].map(([k, v]) => (
                         <div key={k} className="flex justify-between gap-2">
-                          <dt className="text-smoke">{k}</dt>
-                          <dd className={k === "MeterMind score" ? "text-lime" : "text-mist"}>{v}</dd>
+                          <dt className="text-ash">{k}</dt>
+                          <dd className={k === "Score" ? "text-lime font-medium" : "text-mist"}>{v}</dd>
                         </div>
                       ))}
                     </dl>

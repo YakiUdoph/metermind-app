@@ -48,7 +48,7 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const btnBase =
-  "inline-flex select-none items-center justify-center gap-2 rounded-md font-medium transition-all duration-200 ease-out active:translate-y-px disabled:opacity-50";
+  "inline-flex select-none items-center justify-center gap-2 rounded-md font-medium transition-all duration-200 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime focus-visible:ring-offset-2 focus-visible:ring-offset-void disabled:opacity-50 disabled:pointer-events-none";
 
 const btnVariant = {
   primary:

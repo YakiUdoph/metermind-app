@@ -163,7 +163,8 @@
 
 @utility mono-num {
   font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" on, "cv01" on, "zero" on;
   letter-spacing: -0.01em;
 }
 

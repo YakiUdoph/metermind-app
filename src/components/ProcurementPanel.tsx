@@ -30,18 +30,21 @@ export function ProcurementPanel({
       />
       <aside
         role="dialog"
-        aria-label={`Procurement ${item.id}`}
-        className="animate-rise absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col border-l border-border bg-carbon"
+        aria-modal="true"
+        aria-labelledby="procurement-title"
+        className="animate-rise absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col border-l border-border bg-carbon shadow-2xl"
       >
         <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
             <div className="eyebrow">Procurement</div>
-            <h3 className="mono-num mt-1 truncate text-[16px] text-paper">#{item.id}</h3>
+            <h3 id="procurement-title" className="mono-num mt-1 truncate text-[16px] text-paper">
+              #{item.id}
+            </h3>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-fog transition-colors hover:text-paper"
-            aria-label="Close"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-fog transition-colors hover:border-smoke hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime"
+            aria-label="Close modal drawer"
           >
             <X size={14} />
           </button>
@@ -59,7 +62,9 @@ export function ProcurementPanel({
             ].map(([k, v]) => (
               <div key={k} className="bg-obsidian px-3 py-3">
                 <dt className="eyebrow">{k}</dt>
-                <dd className="mt-1.5 text-[13px] text-mist">{v}</dd>
+                <dd className={cn("mt-1.5 text-[13px]", k === "Paid" ? "mono-num text-paper" : "text-mist")}>
+                  {v}
+                </dd>
               </div>
             ))}
           </dl>
@@ -85,16 +90,18 @@ export function ProcurementPanel({
                     )}
                   >
                     <span
-                      className={cn("min-w-0 truncate text-[13px]", chosen ? "text-lime" : "text-ash")}
+                      className={cn("min-w-0 truncate text-[13px]", chosen ? "text-lime font-medium" : "text-ash")}
                     >
                       {c.name}
                       {chosen ? " · selected" : ""}
                     </span>
-                    <span className="mono-num text-[12px] text-mist">{currency(c.price, 3)}</span>
+                    <span className="mono-num text-right text-[12px] text-mist">
+                      {currency(c.price, 3)}
+                    </span>
                     <span
-                      className={cn("mono-num w-8 text-right text-[12px]", chosen ? "text-lime" : "text-smoke")}
+                      className={cn("mono-num w-12 text-right text-[12px]", chosen ? "text-lime" : "text-smoke")}
                     >
-                      {c.score}
+                      Score {c.score}
                     </span>
                   </li>
                 );
@@ -102,7 +109,7 @@ export function ProcurementPanel({
             </ul>
           </div>
 
-          <div>
+          <div className="rounded-lg border border-border bg-void/60 p-4">
             <div className="eyebrow">Why MeterMind chose this provider</div>
             <p className="mt-2 text-[13px] leading-relaxed text-mist">{item.why}</p>
           </div>
@@ -141,7 +148,7 @@ export function ProcurementPanel({
           {item.provider === WINNER ? (
             <p className="flex items-start gap-2 border-t border-border pt-4 text-[12px] leading-relaxed text-ash">
               <Check size={13} className="mt-0.5 shrink-0 text-lime" aria-hidden="true" />
-              A cheaper provider was available at $0.020 but scored 69 — below your quality floor.
+              QuickSearch was available at $0.020 but scored 69 — below your quality floor.
             </p>
           ) : null}
         </div>
