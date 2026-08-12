@@ -1,19 +1,40 @@
-// Mock data layer for MeterMind.
+// Mock data layer for MeterMind — autonomous procurement intelligence for AI agents.
 // Shaped like an API response so it can be swapped for real fetches later.
 
-export type Decision = "APPROVED" | "BLOCKED" | "ROUTED" | "PENDING";
+export type ProcurementStatus = "COMPLETE" | "EXECUTING" | "SELECTED" | "BLOCKED";
 
-export interface Transaction {
+export interface Provider {
   id: string;
-  agent: string;
-  provider: string;
-  amount: number;
-  originalAmount?: number;
-  saved?: number;
-  decision: Decision;
-  reason: string[];
+  name: string;
   category: string;
-  timestamp: string;
+  price: number;
+  quality: number;
+  reliability: number;
+  latency: number;
+  score: number;
+  jobs: number;
+  failed: number;
+  spend: number;
+  trend: number; // percent change, negative = cheaper
+  assessment: string;
+  priceHistory: number[];
+  qualityHistory: number[];
+}
+
+export interface Procurement {
+  id: string;
+  time: string;
+  agent: string;
+  task: string;
+  provider: string;
+  paid: number;
+  comparable: number;
+  status: ProcurementStatus;
+  rail: string;
+  quality: number;
+  reliability: number;
+  why: string;
+  considered: { name: string; price: number; score: number }[];
 }
 
 export interface Agent {
@@ -23,123 +44,395 @@ export interface Agent {
   budget: number;
   spent: number;
   saved: number;
+  priority: "Lowest Cost" | "Balanced" | "Highest Quality" | "Fastest";
   rules: { label: string; value: string }[];
 }
 
+/* ------------------------------------------------------------- metrics */
+
 export const metrics = {
-  totalManaged: 24820.4,
-  spentThisMonth: 8412.19,
-  savedByMeterMind: 1284.62,
-  activeAgents: 12,
+  totalSaved: 312.84,
+  totalSpend: 211.16,
+  estimatedWithout: 524.0,
+  procurements: 1482,
+  successRate: 98.7,
+  providersUsed: 18,
 };
 
-export const spendOverTime = [
-  { day: "Jul 14", spend: 214, saved: 22 },
-  { day: "Jul 16", spend: 268, saved: 31 },
-  { day: "Jul 18", spend: 191, saved: 18 },
-  { day: "Jul 20", spend: 342, saved: 47 },
-  { day: "Jul 22", spend: 298, saved: 38 },
-  { day: "Jul 24", spend: 388, saved: 61 },
-  { day: "Jul 26", spend: 312, saved: 44 },
-  { day: "Jul 28", spend: 431, saved: 72 },
-  { day: "Jul 30", spend: 396, saved: 58 },
-  { day: "Aug 01", spend: 468, saved: 81 },
-  { day: "Aug 03", spend: 402, saved: 64 },
-  { day: "Aug 05", spend: 521, saved: 96 },
+/** Actual MeterMind spend vs. what the same work would have cost without it. */
+export const spendVsEstimate = [
+  { day: "Jul 14", actual: 12.4, estimated: 29.8 },
+  { day: "Jul 16", actual: 14.1, estimated: 33.2 },
+  { day: "Jul 18", actual: 11.2, estimated: 27.4 },
+  { day: "Jul 20", actual: 18.6, estimated: 44.1 },
+  { day: "Jul 22", actual: 16.2, estimated: 39.6 },
+  { day: "Jul 24", actual: 21.4, estimated: 52.0 },
+  { day: "Jul 26", actual: 17.8, estimated: 43.5 },
+  { day: "Jul 28", actual: 23.9, estimated: 58.7 },
+  { day: "Jul 30", actual: 20.4, estimated: 50.2 },
+  { day: "Aug 01", actual: 25.6, estimated: 63.1 },
+  { day: "Aug 03", actual: 12.8, estimated: 32.4 },
+  { day: "Aug 05", actual: 16.76, estimated: 50.0 },
 ];
 
-export const spendByService = [
-  { name: "OpenAI", amount: 3218.44 },
-  { name: "Anthropic", amount: 2104.9 },
-  { name: "Google", amount: 1188.32 },
-  { name: "AWS", amount: 942.18 },
-  { name: "ElevenLabs", amount: 618.05 },
-  { name: "Other", amount: 340.3 },
+export const spendByCategory = [
+  { name: "Search & research", amount: 68.42 },
+  { name: "Inference", amount: 52.18 },
+  { name: "Voice / TTS", amount: 31.06 },
+  { name: "Code analysis", amount: 24.9 },
+  { name: "Translation", amount: 18.4 },
+  { name: "Vision", amount: 16.2 },
 ];
 
-export const transactions: Transaction[] = [
+/* ----------------------------------------------------------- providers */
+
+export const providers: Provider[] = [
+  {
+    id: "dataflow",
+    name: "DataFlow",
+    category: "Search",
+    price: 0.04,
+    quality: 94,
+    reliability: 98.9,
+    latency: 420,
+    score: 94,
+    jobs: 1281,
+    failed: 7,
+    spend: 147.82,
+    trend: -8,
+    assessment:
+      "Highly reliable provider offering excellent price-to-quality performance. Preferred for balanced workloads.",
+    priceHistory: [0.05, 0.05, 0.048, 0.046, 0.044, 0.042, 0.04],
+    qualityHistory: [91, 92, 92, 93, 94, 94, 94],
+  },
+  {
+    id: "searchx",
+    name: "SearchX",
+    category: "Search",
+    price: 0.08,
+    quality: 96,
+    reliability: 99.1,
+    latency: 510,
+    score: 92,
+    jobs: 3104,
+    failed: 24,
+    spend: 212.4,
+    trend: 38,
+    assessment:
+      "Top-tier quality, but a recent 38% price increase pushed it below DataFlow on value for balanced tasks.",
+    priceHistory: [0.058, 0.058, 0.06, 0.062, 0.07, 0.076, 0.08],
+    qualityHistory: [95, 96, 96, 96, 96, 96, 96],
+  },
+  {
+    id: "quicksearch",
+    name: "QuickSearch",
+    category: "Search",
+    price: 0.02,
+    quality: 71,
+    reliability: 88.2,
+    latency: 310,
+    score: 69,
+    jobs: 426,
+    failed: 41,
+    spend: 8.52,
+    trend: -3,
+    assessment:
+      "Cheapest search route available, but reliability falls below most quality thresholds. Used only for low-stakes lookups.",
+    priceHistory: [0.021, 0.021, 0.02, 0.02, 0.02, 0.02, 0.02],
+    qualityHistory: [73, 72, 72, 71, 71, 71, 71],
+  },
+  {
+    id: "researchapi",
+    name: "ResearchAPI",
+    category: "Search",
+    price: 0.06,
+    quality: 91,
+    reliability: 97.4,
+    latency: 460,
+    score: 90,
+    jobs: 902,
+    failed: 12,
+    spend: 54.12,
+    trend: 2,
+    assessment: "Consistent research-grade results at a mid-market price. A dependable second choice.",
+    priceHistory: [0.058, 0.058, 0.059, 0.059, 0.06, 0.06, 0.06],
+    qualityHistory: [90, 90, 91, 91, 91, 91, 91],
+  },
+  {
+    id: "insightai",
+    name: "InsightAI",
+    category: "Search",
+    price: 0.03,
+    quality: 72,
+    reliability: 91.4,
+    latency: 380,
+    score: 74,
+    jobs: 318,
+    failed: 18,
+    spend: 9.54,
+    trend: -5,
+    assessment: "Inexpensive summarization layer. Acceptable for drafts, not for published analysis.",
+    priceHistory: [0.034, 0.033, 0.032, 0.031, 0.03, 0.03, 0.03],
+    qualityHistory: [70, 71, 71, 72, 72, 72, 72],
+  },
+  {
+    id: "voiceflow",
+    name: "VoiceFlow",
+    category: "Voice",
+    price: 0.11,
+    quality: 93,
+    reliability: 98.2,
+    latency: 640,
+    score: 93,
+    jobs: 612,
+    failed: 9,
+    spend: 67.32,
+    trend: -11,
+    assessment: "Best value voice synthesis for long-form narration. Latency is higher but quality holds.",
+    priceHistory: [0.128, 0.126, 0.122, 0.118, 0.114, 0.112, 0.11],
+    qualityHistory: [91, 92, 92, 93, 93, 93, 93],
+  },
+  {
+    id: "codemodel",
+    name: "CodeModel API",
+    category: "Code",
+    price: 0.18,
+    quality: 95,
+    reliability: 99.3,
+    latency: 720,
+    score: 95,
+    jobs: 488,
+    failed: 3,
+    spend: 87.84,
+    trend: -4,
+    assessment: "Highest measured accuracy on code review workloads. Worth the premium on critical repos.",
+    priceHistory: [0.19, 0.19, 0.188, 0.185, 0.182, 0.18, 0.18],
+    qualityHistory: [93, 94, 94, 95, 95, 95, 95],
+  },
+  {
+    id: "linguaapi",
+    name: "LinguaAPI",
+    category: "Translation",
+    price: 0.05,
+    quality: 92,
+    reliability: 97.8,
+    latency: 350,
+    score: 93,
+    jobs: 744,
+    failed: 11,
+    spend: 37.2,
+    trend: -41,
+    assessment: "Comparable quality to TranslatePro at 41% lower cost. Now the default translation route.",
+    priceHistory: [0.085, 0.082, 0.078, 0.07, 0.062, 0.056, 0.05],
+    qualityHistory: [90, 91, 91, 92, 92, 92, 92],
+  },
+  {
+    id: "visionapi",
+    name: "VisionAPI",
+    category: "Vision",
+    price: 0.09,
+    quality: 94,
+    reliability: 99.0,
+    latency: 540,
+    score: 94,
+    jobs: 356,
+    failed: 4,
+    spend: 32.04,
+    trend: 0,
+    assessment:
+      "Retained despite a 12% cheaper alternative — the challenger failed the 97% reliability threshold.",
+    priceHistory: [0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09],
+    qualityHistory: [93, 93, 94, 94, 94, 94, 94],
+  },
+];
+
+/** The four providers evaluated in the hero + live procurement demo. */
+export const demoProviders = [
+  { name: "SearchX", price: 0.08, quality: 96, reliability: 99.1, latency: 510, score: 92 },
+  { name: "DataFlow", price: 0.04, quality: 94, reliability: 98.9, latency: 420, score: 94 },
+  { name: "QuickSearch", price: 0.02, quality: 71, reliability: 88.2, latency: 310, score: 69 },
+  { name: "ResearchAPI", price: 0.06, quality: 91, reliability: 97.4, latency: 460, score: 90 },
+];
+
+export const WINNER = "DataFlow";
+
+/* --------------------------------------------------------- procurements */
+
+export const procurements: Procurement[] = [
   {
     id: "MM-2841",
+    time: "14:32:08",
     agent: "Research Agent",
-    provider: "OpenAI",
-    amount: 21.8,
-    originalAmount: 25.4,
-    saved: 3.6,
-    decision: "APPROVED",
-    reason: [
-      "Within remaining budget",
-      "Provider is approved",
-      "Under transaction maximum",
-      "No suspicious spending pattern detected",
+    task: "Web research",
+    provider: "DataFlow",
+    paid: 0.04,
+    comparable: 0.08,
+    status: "COMPLETE",
+    rail: "x402",
+    quality: 94,
+    reliability: 98.9,
+    why: "DataFlow delivered comparable quality to SearchX at 50% lower cost while remaining above your reliability threshold.",
+    considered: [
+      { name: "SearchX", price: 0.08, score: 92 },
+      { name: "DataFlow", price: 0.04, score: 94 },
+      { name: "QuickSearch", price: 0.02, score: 69 },
+      { name: "ResearchAPI", price: 0.06, score: 90 },
     ],
-    category: "AI inference",
-    timestamp: "Just now",
   },
   {
     id: "MM-2840",
-    agent: "Research Agent",
-    provider: "OpenAI",
-    amount: 18.2,
-    saved: 2.1,
-    decision: "APPROVED",
-    reason: ["Within monthly agent budget", "Under $50 transaction limit"],
-    category: "AI inference",
-    timestamp: "2 min ago",
+    time: "14:28:51",
+    agent: "Marketing Agent",
+    task: "Text-to-speech",
+    provider: "VoiceFlow",
+    paid: 0.11,
+    comparable: 0.18,
+    status: "COMPLETE",
+    rail: "x402",
+    quality: 93,
+    reliability: 98.2,
+    why: "VoiceFlow matched the incumbent's voice quality at 39% lower cost with acceptable latency for narration.",
+    considered: [
+      { name: "VoiceFlow", price: 0.11, score: 93 },
+      { name: "SpeakLabs", price: 0.18, score: 92 },
+      { name: "TinyTTS", price: 0.05, score: 64 },
+    ],
   },
   {
     id: "MM-2839",
-    agent: "Marketing Agent",
-    provider: "ElevenLabs",
-    amount: 94.0,
-    decision: "BLOCKED",
-    reason: ["Transaction exceeds $50 limit", "Requires human override"],
-    category: "Voice synthesis",
-    timestamp: "6 min ago",
+    time: "14:22:17",
+    agent: "Coding Agent",
+    task: "Code analysis",
+    provider: "CodeModel API",
+    paid: 0.18,
+    comparable: 0.23,
+    status: "COMPLETE",
+    rail: "card",
+    quality: 95,
+    reliability: 99.3,
+    why: "Highest accuracy on review workloads. A cheaper model scored 74 and was rejected under your Highest Quality priority.",
+    considered: [
+      { name: "CodeModel API", price: 0.18, score: 95 },
+      { name: "DevLLM", price: 0.23, score: 93 },
+      { name: "PatchBot", price: 0.09, score: 74 },
+    ],
   },
   {
     id: "MM-2838",
-    agent: "Coding Agent",
-    provider: "Anthropic",
-    amount: 7.84,
-    saved: 0.94,
-    decision: "APPROVED",
-    reason: ["Within monthly agent budget", "Lower-cost route selected"],
-    category: "Code generation",
-    timestamp: "11 min ago",
+    time: "14:15:03",
+    agent: "Data Agent",
+    task: "Document translation",
+    provider: "LinguaAPI",
+    paid: 0.05,
+    comparable: 0.085,
+    status: "COMPLETE",
+    rail: "x402",
+    quality: 92,
+    reliability: 97.8,
+    why: "LinguaAPI reached comparable quality to TranslatePro at 41% lower cost, so MeterMind switched the default route.",
+    considered: [
+      { name: "LinguaAPI", price: 0.05, score: 93 },
+      { name: "TranslatePro", price: 0.085, score: 92 },
+    ],
   },
   {
     id: "MM-2837",
-    agent: "Data Agent",
-    provider: "AWS",
-    amount: 32.1,
-    originalAmount: 38.6,
-    saved: 6.5,
-    decision: "ROUTED",
-    reason: ["Cheaper regional route available", "Provider is approved"],
-    category: "Compute",
-    timestamp: "18 min ago",
+    time: "14:09:44",
+    agent: "Support Agent",
+    task: "Image classification",
+    provider: "VisionAPI",
+    paid: 0.09,
+    comparable: 0.09,
+    status: "COMPLETE",
+    rail: "card",
+    quality: 94,
+    reliability: 99.0,
+    why: "A 12% cheaper alternative was found but failed the 97% reliability threshold, so VisionAPI was retained.",
+    considered: [
+      { name: "VisionAPI", price: 0.09, score: 94 },
+      { name: "PixelLite", price: 0.079, score: 71 },
+    ],
   },
   {
     id: "MM-2836",
+    time: "14:02:31",
     agent: "Research Agent",
-    provider: "Google",
-    amount: 4.12,
-    decision: "APPROVED",
-    reason: ["Within monthly agent budget", "Under $50 transaction limit"],
-    category: "Search grounding",
-    timestamp: "27 min ago",
+    task: "Market summary",
+    provider: "ResearchAPI",
+    paid: 0.06,
+    comparable: 0.08,
+    status: "EXECUTING",
+    rail: "x402",
+    quality: 91,
+    reliability: 97.4,
+    why: "DataFlow was rate-limited at request time; ResearchAPI was the next best value above the quality floor.",
+    considered: [
+      { name: "ResearchAPI", price: 0.06, score: 90 },
+      { name: "SearchX", price: 0.08, score: 92 },
+    ],
   },
   {
     id: "MM-2835",
-    agent: "Support Agent",
-    provider: "OpenAI",
-    amount: 61.5,
-    decision: "BLOCKED",
-    reason: ["Transaction exceeds $50 limit", "Duplicate request within 60s"],
-    category: "AI inference",
-    timestamp: "34 min ago",
+    time: "13:56:12",
+    agent: "Marketing Agent",
+    task: "Long-form narration",
+    provider: "—",
+    paid: 0,
+    comparable: 0.94,
+    status: "BLOCKED",
+    rail: "—",
+    quality: 0,
+    reliability: 0,
+    why: "No provider met the task within the $0.50 maximum single-purchase limit. Purchase held for review.",
+    considered: [
+      { name: "SpeakLabs", price: 0.94, score: 92 },
+      { name: "VoiceFlow", price: 0.62, score: 93 },
+    ],
   },
 ];
+
+/* -------------------------------------------------------- optimizations */
+
+export const optimizations = [
+  {
+    id: "opt-1",
+    from: "SearchX",
+    to: "DataFlow",
+    title: "SearchX → DataFlow",
+    body: "SearchX increased its price by 38%. MeterMind automatically identified DataFlow as a comparable alternative.",
+    monthly: 47.2,
+    status: "SWITCHED" as const,
+  },
+  {
+    id: "opt-2",
+    from: "TranslatePro",
+    to: "LinguaAPI",
+    title: "TranslatePro → LinguaAPI",
+    body: "Comparable quality detected at 41% lower cost.",
+    monthly: 28.4,
+    status: "SWITCHED" as const,
+  },
+  {
+    id: "opt-3",
+    from: "VisionAPI",
+    to: "VisionAPI",
+    title: "VisionAPI retained",
+    body: "Alternative provider was 12% cheaper but failed the required reliability threshold.",
+    monthly: 0,
+    status: "QUALITY PROTECTED" as const,
+  },
+];
+
+export const savingsInsights = [
+  { label: "Provider switching", value: 420, detail: "Two high-volume routes moved to comparable, cheaper providers" },
+  { label: "Price changes detected", value: 310, detail: "Price increases caught within hours and re-sourced" },
+  { label: "Better-value providers discovered", value: 184, detail: "New entrants scored above incumbents on value" },
+  { label: "Routing optimization", value: 370, detail: "Regional and cached routes selected automatically" },
+];
+
+export const potentialMonthly = savingsInsights.reduce((s, i) => s + i.value, 0); // 1284
+
+/* -------------------------------------------------------------- agents */
 
 export const agents: Agent[] = [
   {
@@ -148,12 +441,13 @@ export const agents: Agent[] = [
     status: "Active",
     budget: 1000,
     spent: 438.22,
-    saved: 87.41,
+    saved: 587.41,
+    priority: "Balanced",
     rules: [
-      { label: "Maximum transaction", value: "$50" },
-      { label: "Approved services", value: "OpenAI, Anthropic, Google" },
-      { label: "Auto-pay", value: "Enabled" },
-      { label: "Optimization", value: "Lowest reasonable cost" },
+      { label: "Priority", value: "Balanced" },
+      { label: "Minimum reliability", value: "95%" },
+      { label: "Maximum single purchase", value: "$50" },
+      { label: "Auto-switch providers", value: "Enabled" },
     ],
   },
   {
@@ -162,12 +456,13 @@ export const agents: Agent[] = [
     status: "Active",
     budget: 750,
     spent: 302.66,
-    saved: 51.18,
+    saved: 151.18,
+    priority: "Highest Quality",
     rules: [
-      { label: "Maximum transaction", value: "$40" },
-      { label: "Approved services", value: "Anthropic, OpenAI" },
-      { label: "Auto-pay", value: "Enabled" },
-      { label: "Optimization", value: "Prefer cached completions" },
+      { label: "Priority", value: "Highest quality" },
+      { label: "Minimum quality", value: "90/100" },
+      { label: "Maximum single purchase", value: "$40" },
+      { label: "Auto-switch providers", value: "Enabled" },
     ],
   },
   {
@@ -176,12 +471,13 @@ export const agents: Agent[] = [
     status: "Paused",
     budget: 500,
     spent: 214.9,
-    saved: 22.04,
+    saved: 122.04,
+    priority: "Balanced",
     rules: [
-      { label: "Maximum transaction", value: "$50" },
-      { label: "Approved services", value: "ElevenLabs, OpenAI" },
-      { label: "Auto-pay", value: "Requires review" },
-      { label: "Optimization", value: "Lowest reasonable cost" },
+      { label: "Priority", value: "Balanced" },
+      { label: "Minimum reliability", value: "97%" },
+      { label: "Maximum single purchase", value: "$0.50" },
+      { label: "Auto-switch providers", value: "Requires review" },
     ],
   },
   {
@@ -190,22 +486,20 @@ export const agents: Agent[] = [
     status: "Active",
     budget: 1200,
     spent: 688.4,
-    saved: 143.22,
+    saved: 243.22,
+    priority: "Lowest Cost",
     rules: [
-      { label: "Maximum transaction", value: "$120" },
-      { label: "Approved services", value: "AWS, Google" },
-      { label: "Auto-pay", value: "Enabled" },
-      { label: "Optimization", value: "Cheapest region" },
+      { label: "Priority", value: "Lowest cost" },
+      { label: "Minimum reliability", value: "96%" },
+      { label: "Maximum single purchase", value: "$120" },
+      { label: "Auto-switch providers", value: "Enabled" },
     ],
   },
 ];
 
-export const savingsInsights = [
-  { label: "API provider optimization", value: 420, detail: "Route 38% of inference to a cheaper equivalent model" },
-  { label: "Unused agent budget", value: 310, detail: "3 agents consistently underspend their allocation" },
-  { label: "Duplicate service usage", value: 184, detail: "Two agents pay for overlapping search APIs" },
-  { label: "Expensive routing", value: 370, detail: "Cross-region compute billed at premium rates" },
-];
+/* ------------------------------------------------------------ formatting */
 
 export const currency = (n: number, decimals = 2) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+
+export const providerById = (id: string) => providers.find((p) => p.id === id);
