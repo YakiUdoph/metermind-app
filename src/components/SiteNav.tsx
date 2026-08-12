@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const links = [
   { label: "Product", to: "/product" },
+  { label: "Run a Task", to: "/run-task" },
   { label: "How it Works", to: "/how-it-works" },
   { label: "Developers", to: "/developers" },
   { label: "Pricing", to: "/pricing" },
@@ -64,8 +65,8 @@ export function SiteNav() {
           >
             Sign in
           </Link>
-          <BtnLink to="/product" size="sm">
-            Start Building
+          <BtnLink to="/run-task" size="sm">
+            Run a Task
           </BtnLink>
         </div>
 
@@ -94,8 +95,8 @@ export function SiteNav() {
             ))}
           </nav>
           <div className="mt-4 flex gap-2">
-            <BtnLink to="/product" className="flex-1">
-              Start Building
+            <BtnLink to="/run-task" className="flex-1">
+              Run a Task
             </BtnLink>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { MeterMindMark } from "./SiteNav";
 import { LiveDot } from "./primitives";
 
 const cols = [
-  { title: "Product", items: [["Overview", "/product"], ["How it Works", "/how-it-works"], ["Pricing", "/pricing"]] },
+  { title: "Product", items: [["Console", "/product"], ["Run a Task", "/run-task"], ["How it Works", "/how-it-works"], ["Pricing", "/pricing"]] },
   { title: "Developers", items: [["API", "/developers"], ["Documentation", "/developers"], ["GitHub", "/developers"]] },
 ] as const;
 
@@ -17,8 +17,8 @@ export function SiteFooter() {
             <span className="text-[15px]">MeterMind</span>
           </div>
           <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-ash">
-            Financial control layer for the agent economy. Budgets, rules and payment intelligence
-            for autonomous software.
+            Autonomous procurement and spending intelligence for AI agents. Discover, compare, buy
+            and continuously optimize.
           </p>
         </div>
 
