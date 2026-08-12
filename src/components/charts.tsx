@@ -92,8 +92,8 @@ export function SpendChart() {
         ) : null}
       </svg>
       <div className="mt-2 flex justify-between font-mono text-[10px] text-smoke">
-        <span>{spendOverTime[0].day}</span>
-        <span>{spendOverTime[spendOverTime.length - 1].day}</span>
+        <span>{spendOverTime[0]?.day}</span>
+        <span>{spendOverTime[spendOverTime.length - 1]?.day}</span>
       </div>
       {hp ? (
         <div className="mono-num pointer-events-none absolute top-0 right-0 rounded border border-border bg-obsidian px-2 py-1 text-[11px] text-mist">
