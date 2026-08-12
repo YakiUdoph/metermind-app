@@ -85,18 +85,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Autonomous payment and spending intelligence for AI agents: budgets, rules, routing and explainable decisions.",
+          "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment.",
       },
       { name: "author", content: "MeterMind" },
       { property: "og:title", content: "MeterMind — Financial intelligence for AI agents" },
       {
         property: "og:description",
         content:
-          "Autonomous payment and spending intelligence for AI agents: budgets, rules, routing and explainable decisions.",
+          "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "theme-color", content: "#08090a" },
+      { name: "twitter:title", content: "MeterMind — Financial intelligence for AI agents" },
+      { name: "twitter:description", content: "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/52595811-7adc-411e-893e-ec1a067be8ab" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/52595811-7adc-411e-893e-ec1a067be8ab" },
     ],
     links: [
       {

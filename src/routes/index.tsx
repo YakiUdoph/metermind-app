@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Autonomous payment control for the agent economy. Budgets, policy, routing and audit in one surface.",
+          "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment.",
       },
     ],
   }),
