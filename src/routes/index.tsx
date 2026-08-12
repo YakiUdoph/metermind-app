@@ -1,24 +1,50 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Hero } from "@/components/Hero";
+import {
+  ProductSection,
+  Explainability,
+  HowItWorks,
+  RuleBuilder,
+  Savings,
+  Pricing,
+  Developers,
+  Security,
+  FinalCta,
+} from "@/components/sections";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "MeterMind — Financial intelligence for AI agents" },
+      {
+        name: "description",
+        content:
+          "MeterMind gives AI agents budgets, payment rules and spending intelligence: it approves, blocks, routes and explains every machine-to-machine payment.",
+      },
+      { property: "og:title", content: "MeterMind — Financial intelligence for AI agents" },
+      {
+        property: "og:description",
+        content:
+          "Autonomous payment control for the agent economy. Budgets, policy, routing and audit in one surface.",
+      },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <>
+      <Hero />
+      <ProductSection />
+      <Explainability />
+      <HowItWorks />
+      <RuleBuilder />
+      <Savings />
+      <Developers />
+      <Security />
+      <Pricing />
+      <FinalCta />
+    </>
   );
 }
