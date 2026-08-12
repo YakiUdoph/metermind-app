@@ -8,8 +8,8 @@ function useInView<T extends HTMLElement>() {
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) {
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
           setSeen(true);
           io.disconnect();
         }
@@ -35,6 +35,7 @@ export function SpendChart() {
   }));
   const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const area = `${line} L${W},${H} L0,${H} Z`;
+  const hp = hover === null ? null : pts[hover];
 
   return (
     <div ref={ref} className="relative">
@@ -83,10 +84,10 @@ export function SpendChart() {
             onMouseEnter={() => setHover(i)}
           />
         ))}
-        {hover !== null ? (
+        {hp ? (
           <>
-            <line x1={pts[hover].x} x2={pts[hover].x} y1={0} y2={H} stroke="var(--smoke)" strokeWidth="0.5" />
-            <circle cx={pts[hover].x} cy={pts[hover].y} r="3" fill="var(--lime)" />
+            <line x1={hp.x} x2={hp.x} y1={0} y2={H} stroke="var(--smoke)" strokeWidth="0.5" />
+            <circle cx={hp.x} cy={hp.y} r="3" fill="var(--lime)" />
           </>
         ) : null}
       </svg>
@@ -94,10 +95,10 @@ export function SpendChart() {
         <span>{spendOverTime[0].day}</span>
         <span>{spendOverTime[spendOverTime.length - 1].day}</span>
       </div>
-      {hover !== null ? (
+      {hp ? (
         <div className="mono-num pointer-events-none absolute top-0 right-0 rounded border border-border bg-obsidian px-2 py-1 text-[11px] text-mist">
-          {spendOverTime[hover].day} · {currency(spendOverTime[hover].spend, 0)}{" "}
-          <span className="text-lime">+{currency(spendOverTime[hover].saved, 0)} saved</span>
+          {hp.day} · {currency(hp.spend, 0)}{" "}
+          <span className="text-lime">+{currency(hp.saved, 0)} saved</span>
         </div>
       ) : null}
     </div>
