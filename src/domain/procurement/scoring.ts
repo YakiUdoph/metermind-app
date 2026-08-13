@@ -133,6 +133,8 @@ export function evaluateProcurement(
       isWinner: false,
       isQualified,
       disqualificationReasons: isQualified ? undefined : disqualificationReasons,
+      mode: p.mode,
+      metricSource: p.metricSource,
     };
   });
 

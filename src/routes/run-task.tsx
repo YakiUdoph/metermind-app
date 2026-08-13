@@ -12,7 +12,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { Btn, Eyebrow, LiveDot } from "@/components/primitives";
-import { demoProviders, planningProviders, currency as mockCurrency, COINGECKO_PROVIDER_ENTRY } from "@/lib/mock";
+import { demoProviders, planningProviders, currency as mockCurrency, COINGECKO_PROVIDER_ENTRY, BITFINEX_PROVIDER_ENTRY } from "@/lib/mock";
 import { evaluateProcurement } from "@/domain/procurement/scoring";
 import { planTask } from "@/domain/planning/planner";
 import { executePlan } from "@/domain/execution/executor";
@@ -163,9 +163,13 @@ function RunTaskPage() {
     };
 
     if (mode === "full") {
-      const catalog = liveConfigured && !forceDemo
-        ? [...planningProviders, COINGECKO_PROVIDER_ENTRY]
-        : planningProviders;
+      const catalog = [...planningProviders];
+      if (!forceDemo) {
+        catalog.push(BITFINEX_PROVIDER_ENTRY);
+        if (liveConfigured) {
+          catalog.push(COINGECKO_PROVIDER_ENTRY);
+        }
+      }
 
       const pr = planTask(
         {
@@ -183,12 +187,12 @@ function RunTaskPage() {
       setStep(0);
 
       if (pr.status === "SUCCESS" && pr.plan) {
-        const usesCoinGecko = pr.plan.serviceResults.some(
-          (r) => r.procurementResult.selectedProvider?.id === "coingecko"
+        const usesLiveProvider = pr.plan.serviceResults.some(
+          (r) => r.procurementResult.selectedProvider?.mode === "live"
         );
         try {
           let res: ExecutionResult;
-          if (usesCoinGecko && !forceDemo) {
+          if (usesLiveProvider && !forceDemo) {
             res = await executePlanOnServer({ data: pr.plan });
           } else {
             res = await executePlan(pr.plan);
@@ -686,9 +690,11 @@ function RunTaskPage() {
                           "ml-auto rounded border px-1.5 py-0.5 font-mono text-[9px] tracking-widest uppercase",
                           execResult.overallExecutionMode === "live"
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                            : execResult.overallExecutionMode === "hybrid"
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
                             : "border-lime/30 bg-lime/10 text-lime"
                         )}>
-                          {execResult.overallExecutionMode === "live" ? "LIVE" : "DEMO"}
+                          {execResult.overallExecutionMode.toUpperCase()}
                         </span>
                       </div>
                       <div className="mt-1.5 flex items-center gap-3 text-[11px] text-smoke">
@@ -897,9 +903,15 @@ function RunTaskPage() {
                           "ml-auto rounded border px-2 py-0.5 font-mono text-[10px] tracking-[0.1em] uppercase",
                           execResult.overallExecutionMode === "live"
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                            : execResult.overallExecutionMode === "hybrid"
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
                             : "border-lime/30 bg-lime/10 text-lime"
                         )}>
-                          {execResult.overallExecutionMode === "live" ? "LIVE EXECUTION" : "DEMO EXECUTION"}
+                          {execResult.overallExecutionMode === "live"
+                            ? "LIVE EXECUTION"
+                            : execResult.overallExecutionMode === "hybrid"
+                            ? "HYBRID EXECUTION"
+                            : "DEMO EXECUTION"}
                         </span>
                       </div>
                       <div className="space-y-3">
@@ -951,6 +963,85 @@ function RunTaskPage() {
                                 </pre>
                               </details>
                             )}
+                            {ex.service === "market_data" && execResult.liveObservations && (
+                              <div className="mt-4 border-t border-border/50 pt-3.5 space-y-3">
+                                <div className="text-[10px] font-semibold text-smoke tracking-wider uppercase">
+                                  LIVE PROVIDER COMPARISON
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {execResult.liveObservations.map((obs) => {
+                                    const getBtcPrice = (o: any) => o.structuredPayload?.assets?.find((a: any) => a.assetId === "bitcoin" || a.symbol === "BTC")?.price;
+                                    const getEthPrice = (o: any) => o.structuredPayload?.assets?.find((a: any) => a.assetId === "ethereum" || a.symbol === "ETH")?.price;
+                                    const btc = getBtcPrice(obs);
+                                    const eth = getEthPrice(obs);
+                                    return (
+                                      <div 
+                                        key={obs.providerId} 
+                                        className={cn(
+                                          "rounded bg-void/40 p-3 border",
+                                          execResult.selectedLiveProvider === obs.providerId
+                                            ? "border-emerald-500/30"
+                                            : "border-border/50"
+                                        )}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[12px] font-medium text-paper">
+                                            {obs.providerName}
+                                          </span>
+                                          <span className={cn(
+                                            "rounded px-1.5 py-0.5 text-[9px] font-mono tracking-wider uppercase",
+                                            obs.success && obs.dataValid
+                                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                              : "bg-blocked/10 text-blocked border border-blocked/20"
+                                          )}>
+                                            {obs.success && obs.dataValid ? "Available" : obs.success ? "Invalid Data" : "Offline"}
+                                          </span>
+                                        </div>
+                                        <div className="mt-2 space-y-1 text-[11px] text-smoke">
+                                          <div className="flex justify-between">
+                                            <span>BTC:</span>
+                                            <span className="mono-num text-mist">{btc ? `$${btc.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "N/A"}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>ETH:</span>
+                                            <span className="mono-num text-mist">{eth ? `$${eth.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "N/A"}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>Latency:</span>
+                                            <span className="mono-num text-mist">{obs.latencyMs}ms</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>Status:</span>
+                                            <span className="text-mist">{obs.success ? "Success" : (obs.errorCode || "Failed")}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>Quote validity:</span>
+                                            <span className="text-mist">{obs.dataValid ? "Valid" : "Invalid"}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {execResult.selectedLiveProvider && (
+                                  <div className="rounded bg-emerald-500/[0.04] border border-emerald-500/20 p-3 text-[11px] text-smoke space-y-1.5">
+                                    <div>
+                                      <span>WINNER:</span> <strong className="text-emerald-400 uppercase font-mono ml-1">{execResult.selectedLiveProvider}</strong>
+                                    </div>
+                                    {execResult.liveSelectionExplanation && (
+                                      <div>
+                                        <span>WHY:</span> <span className="text-mist">{execResult.liveSelectionExplanation}</span>
+                                      </div>
+                                    )}
+                                    {execResult.quoteDifferencePercent !== null && execResult.quoteDifferencePercent !== undefined && (
+                                      <div>
+                                        <span>Quote difference:</span> <span className="mono-num text-mist">{(execResult.quoteDifferencePercent * 100).toFixed(4)}%</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {ex.errorMessage && (
                               <p className="mt-1.5 text-[11px] text-blocked">{ex.errorMessage}</p>
                             )}
@@ -976,10 +1067,14 @@ function RunTaskPage() {
                           "ml-auto rounded border px-2 py-0.5 font-mono text-[9px] tracking-widest uppercase",
                           execResult.overallExecutionMode === "live"
                             ? "border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-400"
+                            : execResult.overallExecutionMode === "hybrid"
+                            ? "border-amber-500/30 bg-amber-500/[0.07] text-amber-400"
                             : "border-lime/30 bg-lime/[0.07] text-lime"
                         )}>
                           {execResult.overallExecutionMode === "live"
                             ? "mode: live — real external api calls"
+                            : execResult.overallExecutionMode === "hybrid"
+                            ? "mode: hybrid — mixed live & demo services"
                             : "mode: demo — not live api calls"}
                         </span>
                       </div>
@@ -993,7 +1088,9 @@ function RunTaskPage() {
                       <p className="mt-1 text-[12px] text-smoke">
                         {execResult.overallExecutionMode === "live"
                           ? "Real external API output normalized by MeterMind"
-                          : "Result from the last completed stage"}
+                          : execResult.overallExecutionMode === "hybrid"
+                          ? "Hybrid execution output composed by MeterMind"
+                          : "Composed result from MeterMind execution engine"}
                       </p>
                       <pre className="mono-num mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-void p-3.5 text-[12px] leading-relaxed text-fog">
                         {execResult.finalResult}

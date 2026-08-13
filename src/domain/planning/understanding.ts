@@ -447,7 +447,38 @@ export function understandTask(task: string): TaskIntent {
  */
 export function getServiceRequirements(
   category: TaskIntentCategory,
+  task?: string,
 ): readonly ServiceRequirement[] {
   if (category === "unsupported") return [];
+  
+  if (category === "market_comparison" && task) {
+    const lower = task.toLowerCase();
+    const needsResearch = [
+      "news",
+      "reason",
+      "movement",
+      "why",
+      "research",
+      "latest",
+      "development",
+      "explain",
+      "explanation",
+      "web",
+      "source",
+    ].some((kw) => lower.includes(kw));
+
+    if (!needsResearch) {
+      return [
+        {
+          service: "market_data",
+          executionOrder: 1,
+          canParallelize: false,
+          rationale: "Market data providers retrieve real-time or near-real-time pricing from exchanges.",
+          budgetWeight: 1.0,
+        },
+      ];
+    }
+  }
+
   return INTENT_SERVICE_MAP[category];
 }

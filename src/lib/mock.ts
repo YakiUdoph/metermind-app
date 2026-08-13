@@ -651,3 +651,25 @@ export const COINGECKO_PROVIDER_ENTRY: Provider = {
   mode: "live" as const,
 };
 
+export const BITFINEX_PROVIDER_ENTRY: Provider = {
+  id: "bitfinex",
+  name: "Bitfinex",
+  category: "market-data",
+  // price is omitted (unknown)
+  quality: 0,
+  reliability: 0,
+  latency: 0,
+  score: 0,
+  jobs: 0,
+  failed: 0,
+  spend: 0,
+  trend: 0,
+  assessment: "Live Bitfinex Public API. Metrics are not yet observed — do not use for scoring.",
+  priceHistory: [],
+  qualityHistory: [],
+  capabilities: ["market_data"],
+  metricSource: "unknown" as const,
+  mode: "live" as const,
+};
+
+

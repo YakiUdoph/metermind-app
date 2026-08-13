@@ -319,14 +319,14 @@ describe("CoinGecko Live Adapter & Execution Pipeline", () => {
     const testCatalog = [...planningProviders, COINGECKO_PROVIDER_ENTRY];
 
     const plan = planTask(
-      { task: "Find current Bitcoin and Ethereum prices.", totalBudget: 2.0, priority: "balanced" },
+      { task: "Find current Bitcoin and Ethereum prices and latest news.", totalBudget: 2.0, priority: "balanced" },
       testCatalog,
     );
     assert.equal(plan.status, "SUCCESS");
 
     const execResult = await executePlan(plan.plan!, registry);
     assert.equal(execResult.status, "SUCCESS");
-    assert.equal(execResult.overallExecutionMode, "demo"); // demo because web_search was run as demo
+    assert.equal(execResult.overallExecutionMode, "hybrid"); // hybrid because web_search was run as demo and market_data as live
     assert.ok(execResult.liveMarketData !== undefined);
     
     const btc = execResult.liveMarketData.assets.find(a => a.assetId === "bitcoin");

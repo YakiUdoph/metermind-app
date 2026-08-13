@@ -392,6 +392,16 @@ export class DemoProviderAdapter implements ProviderAdapter {
     const payload = generateDemoPayload(request);
     const completedAt = Date.now();
 
+    const structuredPayload = request.service === "market_data" ? {
+      assets: [
+        { assetId: "bitcoin", symbol: "BTC", name: "Bitcoin", currency: "usd", price: 61247.33, marketCap: 1200000000000, volume24h: 28300000000, priceChangePercent24h: 2.4 },
+        { assetId: "ethereum", symbol: "ETH", name: "Ethereum", currency: "usd", price: 3412.17, marketCap: 410000000000, volume24h: 14100000000, priceChangePercent24h: 1.8 }
+      ],
+      fetchedAt: new Date(completedAt).toISOString(),
+      dataSource: `${this.providerName} Demo API`,
+      currency: "usd"
+    } : undefined;
+
     return {
       status: "SUCCESS",
       service: request.service,
@@ -399,6 +409,7 @@ export class DemoProviderAdapter implements ProviderAdapter {
       providerName: this.providerName,
       executionMode: "demo",
       payload,
+      structuredPayload,
       startedAt,
       completedAt,
       measuredLatencyMs: completedAt - startedAt,

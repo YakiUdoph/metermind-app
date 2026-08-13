@@ -19,6 +19,7 @@
 import type { ServiceCategory } from "@/domain/planning/types";
 import type { EvaluatedProvider } from "@/domain/procurement/types";
 import type { ProcurementPlan } from "@/domain/planning/types";
+import type { LiveObservation } from "@/domain/procurement/live-evaluation";
 
 // ---------------------------------------------------------------------------
 // Execution Mode
@@ -57,7 +58,9 @@ export type ExecutionStatusResult =
   /** 5xx or network-level error from the live provider. */
   | "LIVE_PROVIDER_UNAVAILABLE"
   /** Live provider returned a response that could not be parsed/validated. */
-  | "LIVE_PROVIDER_BAD_RESPONSE";
+  | "LIVE_PROVIDER_BAD_RESPONSE"
+  /** Discrepancy between live price feeds exceeds safety threshold. */
+  | "QUOTE_DISAGREEMENT";
 
 // ---------------------------------------------------------------------------
 // Structured live market-data payload (Milestone #4)
@@ -204,7 +207,7 @@ export interface ExecutionResult {
    * "demo" if any stage used a demo adapter.
    * "live" only when ALL stages used live adapters and no demo fallback occurred.
    */
-  readonly overallExecutionMode: ExecutionMode;
+  readonly overallExecutionMode: "live" | "hybrid" | "demo";
   readonly startedAt: number;
   readonly completedAt: number;
   /** Sum of individual stage latencies (not wall-clock total). */
@@ -223,4 +226,9 @@ export interface ExecutionResult {
    * null when execution failed or no market_data stage ran.
    */
   readonly liveMarketData?: LiveMarketDataPayload | undefined;
+  /** In-memory session observations collected during live competition execution. */
+  readonly liveObservations?: readonly LiveObservation[] | undefined;
+  readonly selectedLiveProvider?: string | undefined;
+  readonly liveSelectionExplanation?: string | undefined;
+  readonly quoteDifferencePercent?: number | null | undefined;
 }

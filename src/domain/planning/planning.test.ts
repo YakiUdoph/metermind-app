@@ -464,7 +464,7 @@ describe("MeterMind Task Understanding + Procurement Planning", () => {
   it("26. Market comparison task produces plan with two parallel services", () => {
     const result = planTask(
       {
-        task: "Find current Bitcoin and Ethereum prices across multiple exchanges and compare them.",
+        task: "Find current Bitcoin and Ethereum prices and latest news and compare them.",
         totalBudget: 1.0,
         priority: "lowest-cost",
       },

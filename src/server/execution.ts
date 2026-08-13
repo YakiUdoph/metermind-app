@@ -19,6 +19,7 @@
 import { executePlan } from "@/domain/execution/executor";
 import { createDefaultRegistry } from "@/domain/execution/registry";
 import { createCoinGeckoAdapter, COINGECKO_PROVIDER_ID } from "@/server/providers/coingecko";
+import { BitfinexAdapter } from "@/server/providers/bitfinex";
 import type { ProcurementPlan } from "@/domain/planning/types";
 import type { ExecutionResult } from "@/domain/execution/types";
 
@@ -45,6 +46,10 @@ function createServerRegistry() {
   // Register CoinGecko live adapter (reads COINGECKO_API_KEY from environment)
   const coinGeckoAdapter = createCoinGeckoAdapter();
   registry.register(coinGeckoAdapter);
+
+  // Register Bitfinex live adapter (public, unauthenticated)
+  const bitfinexAdapter = new BitfinexAdapter();
+  registry.register(bitfinexAdapter);
 
   return registry;
 }

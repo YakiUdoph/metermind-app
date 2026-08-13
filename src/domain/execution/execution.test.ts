@@ -29,6 +29,7 @@ import { planningProviders } from "@/lib/mock";
 import type { ServiceExecutionRequest, ProviderAdapter, ServiceExecutionResult } from "./types";
 import type { ServiceCategory } from "@/domain/planning/types";
 import type { EvaluatedProvider } from "@/domain/procurement/types";
+import { evaluateLiveObservations } from "../procurement/live-evaluation";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -322,7 +323,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   it("15. Parallel services (market_comparison) both execute and metadata is preserved", async () => {
     const plan = buildPlan(
-      "Find current Bitcoin and Ethereum prices across multiple exchanges and compare them.",
+      "Find current Bitcoin and Ethereum prices and latest news and compare them.",
       1.0,
     );
     // Both services have executionOrder === 1 (parallel)
@@ -564,5 +565,219 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
     // Final result is the summarization output
     assert.equal(execResult.finalResult, execResult.serviceExecutions[1]?.payload);
+  });
+
+  // ── 13. Milestone #5.1 Verification Tests ─────────────────────────────────
+
+  it("28. Simple BTC/ETH price query requires market_data only", () => {
+    const result = planTask(
+      {
+        task: "Find current Bitcoin and Ethereum prices and compare them.",
+        totalBudget: 1.0,
+        priority: "balanced",
+      },
+      planningProviders,
+    );
+    assert.equal(result.status, "SUCCESS");
+    const services = result.plan!.serviceRequirements.map((r) => r.service);
+    assert.deepEqual(services, ["market_data"]);
+  });
+
+  it("29. Market price + news query requires market_data + web_search", () => {
+    const result = planTask(
+      {
+        task: "Find current Bitcoin and Ethereum prices and latest news and compare them.",
+        totalBudget: 1.0,
+        priority: "balanced",
+      },
+      planningProviders,
+    );
+    assert.equal(result.status, "SUCCESS");
+    const services = result.plan!.serviceRequirements.map((r) => r.service);
+    assert.ok(services.includes("market_data"));
+    assert.ok(services.includes("web_search"));
+  });
+
+  it("30. Final result composition and execution modes (LIVE, HYBRID, DEMO)", async () => {
+    // A. DEMO overall mode
+    const planDemo = buildPlan("Find current Bitcoin and Ethereum prices.", 1.0);
+    const execDemo = await executePlan(planDemo);
+    assert.equal(execDemo.status, "SUCCESS");
+    assert.equal(execDemo.overallExecutionMode, "demo");
+    assert.ok(execDemo.finalResult?.includes("=== PRIMARY DEMO MARKET DATA RESULT ==="));
+    assert.ok(execDemo.finalResult?.includes("Bitcoin Price:"));
+
+    // B. HYBRID overall mode
+    // We register a live adapter for CoinGecko, while web_search is handled by the default demo adapter.
+    const registry = createDefaultRegistry();
+    class MockLiveCoinGeckoAdapter {
+      readonly providerId = "coingecko";
+      readonly providerName = "CoinGecko";
+      readonly supportedCapabilities = ["market_data"];
+      readonly executionMode = "live" as const;
+      isAvailable() { return true; }
+      async execute(request: any): Promise<any> {
+        return {
+          status: "SUCCESS",
+          service: "market_data",
+          providerId: "coingecko",
+          providerName: "CoinGecko",
+          executionMode: "live",
+          payload: "Live CG Data",
+          structuredPayload: {
+            assets: [
+              { assetId: "bitcoin", symbol: "BTC", name: "Bitcoin", currency: "usd", price: 68500.0, marketCap: null, volume24h: null, priceChangePercent24h: null },
+              { assetId: "ethereum", symbol: "ETH", name: "Ethereum", currency: "usd", price: 3450.0, marketCap: null, volume24h: null, priceChangePercent24h: null }
+            ],
+            fetchedAt: "2026-08-13T19:34:16Z",
+            dataSource: "CoinGecko Public API",
+            currency: "usd"
+          },
+          startedAt: Date.now(),
+          completedAt: Date.now(),
+          measuredLatencyMs: 250,
+          allocatedBudget: request.allocatedBudget,
+        };
+      }
+    }
+    registry.register(new MockLiveCoinGeckoAdapter() as any);
+
+    const planHybrid = planTask(
+      {
+        task: "Find current Bitcoin and Ethereum prices and latest news.",
+        totalBudget: 2.0,
+        priority: "balanced",
+      },
+      [...planningProviders, {
+        id: "coingecko",
+        name: "CoinGecko",
+        category: "market-data",
+        quality: 90,
+        reliability: 95,
+        latency: 200,
+        score: 90,
+        jobs: 10,
+        failed: 0,
+        spend: 0,
+        trend: 0,
+        assessment: "Live provider catalog entry",
+        priceHistory: [],
+        qualityHistory: [],
+        capabilities: ["market_data"],
+        metricSource: "unknown",
+        mode: "live"
+      }]
+    );
+    assert.equal(planHybrid.status, "SUCCESS");
+
+    const execHybrid = await executePlan(planHybrid.plan!, registry);
+    assert.equal(execHybrid.status, "SUCCESS");
+    assert.equal(execHybrid.overallExecutionMode, "hybrid");
+    assert.ok(execHybrid.finalResult?.includes("=== PRIMARY LIVE MARKET DATA RESULT ==="));
+    assert.ok(execHybrid.finalResult?.includes("=== SUPPORTING DEMO CONTEXT ==="));
+    // Verify that the last demo stage (web_search) does not override the primary live result
+    assert.ok(!execHybrid.finalResult?.startsWith("[DEMO]"));
+
+    // C. LIVE overall mode
+    const planLive = planTask(
+      {
+        task: "Find current Bitcoin and Ethereum prices.",
+        totalBudget: 2.0,
+        priority: "balanced",
+      },
+      [{
+        id: "coingecko",
+        name: "CoinGecko",
+        category: "market-data",
+        quality: 90,
+        reliability: 95,
+        latency: 200,
+        score: 90,
+        jobs: 10,
+        failed: 0,
+        spend: 0,
+        trend: 0,
+        assessment: "Live provider catalog entry",
+        priceHistory: [],
+        qualityHistory: [],
+        capabilities: ["market_data"],
+        metricSource: "unknown",
+        mode: "live"
+      }]
+    );
+    assert.equal(planLive.status, "SUCCESS");
+
+    const execLive = await executePlan(planLive.plan!, registry);
+    assert.equal(execLive.status, "SUCCESS");
+    assert.equal(execLive.overallExecutionMode, "live");
+    assert.ok(execLive.finalResult?.includes("=== PRIMARY LIVE MARKET DATA RESULT ==="));
+    assert.ok(!execLive.finalResult?.includes("=== SUPPORTING DEMO CONTEXT ==="));
+  });
+
+  it("31. Preferred provider logic, unmodified latency, and quote comparison in live evaluation", () => {
+    const observations = [
+      {
+        providerId: "coingecko",
+        providerName: "CoinGecko",
+        capability: "market_data",
+        startedAt: 1000,
+        completedAt: 2089,
+        latencyMs: 1089, // slower but preferred
+        success: true,
+        httpStatus: 200,
+        dataValid: true,
+        freshness: "2026-08-13T19:34:16Z",
+        errorCode: null,
+        payload: "OK",
+        structuredPayload: {
+          assets: [
+            { assetId: "bitcoin", symbol: "BTC", price: 68000 },
+            { assetId: "ethereum", symbol: "ETH", price: 3400 }
+          ]
+        }
+      },
+      {
+        providerId: "bitfinex",
+        providerName: "Bitfinex",
+        capability: "market_data",
+        startedAt: 1000,
+        completedAt: 2050,
+        latencyMs: 1050, // faster but not preferred
+        success: true,
+        httpStatus: 200,
+        dataValid: true,
+        freshness: "2026-08-13T19:34:16Z",
+        errorCode: null,
+        payload: "OK",
+        structuredPayload: {
+          assets: [
+            { assetId: "bitcoin", symbol: "BTC", price: 68100 },
+            { assetId: "ethereum", symbol: "ETH", price: 3405 }
+          ]
+        }
+      }
+    ];
+
+    // Evaluate with CoinGecko as preferred
+    const res = evaluateLiveObservations(
+      observations,
+      "balanced",
+      { preferredProviders: ["CoinGecko"] }
+    );
+
+    // CoinGecko should win due to the 50ms preferred provider ranking bonus (1089 - 50 = 1039, overriding 1050)
+    assert.equal(res.winner?.providerId, "coingecko");
+    
+    // Observed latencies must remain exactly actual measured latencies (unmodified)
+    assert.equal(res.winner?.latencyMs, 1089);
+    assert.equal(res.rankedObservations[1]?.latencyMs, 1050);
+
+    // Quote difference is correctly computed: |68000 - 68100| / 68000 = 100 / 68000 = 0.00147
+    assert.ok(res.quoteDifferencePercent !== null);
+    assert.ok(res.quoteDifferencePercent > 0.0014 && res.quoteDifferencePercent < 0.0015);
+    
+    // Rationale distinguishes observations and shows correct text
+    assert.ok(res.explanation.includes("CoinGecko and Bitfinex both returned valid complete BTC/ETH quotes"));
+    assert.ok(res.explanation.includes("CoinGecko was selected due to user policy preference (applying a 50ms bonus to preferred providers)"));
   });
 });

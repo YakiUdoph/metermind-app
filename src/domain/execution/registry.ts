@@ -65,6 +65,13 @@ export class AdapterRegistry {
     this.adapters.set(adapter.providerId, adapter);
   }
 
+  /** Returns all adapters registered that support the given service category. */
+  getAdaptersForService(service: ServiceCategory): ProviderAdapter[] {
+    return Array.from(this.adapters.values()).filter((a) =>
+      (a.supportedCapabilities as string[]).includes(service as string)
+    );
+  }
+
   /** Number of registered adapters. */
   get size(): number {
     return this.adapters.size;

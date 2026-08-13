@@ -114,7 +114,7 @@ export function planTask(
   }
 
   // ── Step 3: Resolve service requirements ──────────────────────────────────
-  const serviceRequirements = getServiceRequirements(intent.category);
+  const serviceRequirements = getServiceRequirements(intent.category, request.task);
 
   // ── Step 4: Allocate budget ───────────────────────────────────────────────
   const budgetMap = allocateBudget(serviceRequirements, request.totalBudget);
