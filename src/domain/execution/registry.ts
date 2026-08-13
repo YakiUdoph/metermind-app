@@ -32,6 +32,7 @@ const DEMO_PROVIDER_CAPABILITIES: Record<string, readonly ServiceCategory[]> = {
   codemodel:   ["code_analysis"],
   linguaapi:   ["translation"],
   visionapi:   ["image_analysis"],
+  coingecko:   ["market_data"],
 };
 
 const DEMO_PROVIDER_NAMES: Record<string, string> = {
@@ -44,6 +45,7 @@ const DEMO_PROVIDER_NAMES: Record<string, string> = {
   codemodel:   "CodeModel API",
   linguaapi:   "LinguaAPI",
   visionapi:   "VisionAPI",
+  coingecko:   "CoinGecko",
 };
 
 // ---------------------------------------------------------------------------

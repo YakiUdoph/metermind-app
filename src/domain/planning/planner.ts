@@ -194,12 +194,12 @@ export function planTask(
   );
   const estimatedTotalCost = Number(
     serviceResults
-      .reduce((s, r) => s + r.procurementResult.selectedCost, 0)
+      .reduce((s, r) => s + (r.procurementResult.selectedCost ?? 0), 0)
       .toFixed(3),
   );
   const estimatedTotalSavings = Number(
     serviceResults
-      .reduce((s, r) => s + r.procurementResult.estimatedSavings, 0)
+      .reduce((s, r) => s + (r.procurementResult.estimatedSavings ?? 0), 0)
       .toFixed(3),
   );
 

@@ -46,7 +46,48 @@ export type ExecutionStatusResult =
   | "EXECUTION_TIMEOUT"
   | "SERVICE_NOT_SUPPORTED"
   | "EXECUTION_BUDGET_EXCEEDED"
-  | "INVALID_EXECUTION_REQUEST";
+  | "INVALID_EXECUTION_REQUEST"
+  // ── Live-provider typed failures (Milestone #4) ───────────────────────────
+  /** No API key configured for the live provider. */
+  | "LIVE_PROVIDER_NOT_CONFIGURED"
+  /** 401 / bad API key returned by the live provider. */
+  | "LIVE_PROVIDER_AUTH_FAILED"
+  /** 429 rate limit returned by the live provider. */
+  | "LIVE_PROVIDER_RATE_LIMITED"
+  /** 5xx or network-level error from the live provider. */
+  | "LIVE_PROVIDER_UNAVAILABLE"
+  /** Live provider returned a response that could not be parsed/validated. */
+  | "LIVE_PROVIDER_BAD_RESPONSE";
+
+// ---------------------------------------------------------------------------
+// Structured live market-data payload (Milestone #4)
+// ---------------------------------------------------------------------------
+
+/** Per-asset price entry returned by a live market-data adapter. */
+export interface LiveAssetPrice {
+  readonly assetId: string;        // CoinGecko asset id, e.g. "bitcoin"
+  readonly symbol: string;         // e.g. "BTC"
+  readonly name: string;           // e.g. "Bitcoin"
+  readonly currency: string;       // e.g. "usd"
+  readonly price: number;          // e.g. 67000.0
+  readonly marketCap: number | null;
+  readonly volume24h: number | null;
+  readonly priceChangePercent24h: number | null;
+}
+
+/**
+ * Structured payload for market_data service executions.
+ * Both demo and live adapters populate this structure.
+ * Demo adapters use placeholder prices; live adapters use real CoinGecko data.
+ */
+export interface LiveMarketDataPayload {
+  readonly assets: readonly LiveAssetPrice[];
+  readonly fetchedAt: string;   // ISO 8601 timestamp of data retrieval
+  readonly dataSource: string;  // e.g. "CoinGecko Demo API" or "[DEMO] fixture"
+  readonly currency: string;
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Adapter I/O
@@ -85,6 +126,12 @@ export interface ServiceExecutionResult {
   readonly executionMode: ExecutionMode;
   /** Service output payload (text). null on failure. */
   readonly payload: string | null;
+  /**
+   * Structured market-data payload (Milestone #4).
+   * Populated only for market_data executions (demo or live).
+   * null for all other service categories.
+   */
+  readonly structuredPayload?: LiveMarketDataPayload | undefined;
   /** Wall-clock timestamp (ms since epoch) when execution started. */
   readonly startedAt: number;
   /** Wall-clock timestamp when execution completed or failed. */
@@ -92,7 +139,7 @@ export interface ServiceExecutionResult {
   /** Actual measured latency = completedAt − startedAt. */
   readonly measuredLatencyMs: number;
   /** Provider's declared price per call (from mock catalog). */
-  readonly declaredCost: number;
+  readonly declaredCost?: number | undefined;
   readonly allocatedBudget: number;
   readonly errorMessage?: string | undefined;
 }
@@ -110,6 +157,8 @@ export interface ServiceExecutionResult {
  * - Demo adapters MUST return executionMode: "demo" always.
  * - Live adapters MUST return executionMode: "live" only when a real API was called.
  * - execute() MUST NOT throw — all failures are returned as typed results.
+ * - execute() returns a Promise to support async/network operations (Milestone #4).
+ *   Demo adapters may return Promise.resolve(syncResult) for simplicity.
  */
 export interface ProviderAdapter {
   /** Must match a provider id in the planningProviders catalog. */
@@ -122,8 +171,9 @@ export interface ProviderAdapter {
   /**
    * Execute the given service request.
    * Never throws. All failures are returned as typed ServiceExecutionResult.
+   * Returns a Promise to support network I/O in live adapters.
    */
-  execute(request: ServiceExecutionRequest): ServiceExecutionResult;
+  execute(request: ServiceExecutionRequest): Promise<ServiceExecutionResult>;
   /** Returns false if the provider is known to be unavailable right now. */
   isAvailable(): boolean;
 }
@@ -167,4 +217,10 @@ export interface ExecutionResult {
   readonly errorMessage?: string | undefined;
   /** Which service category caused a failure (if applicable). */
   readonly failedService?: ServiceCategory | undefined;
+  /**
+   * Structured market-data result from the last successful market_data stage.
+   * Populated only for tasks that include a market_data service.
+   * null when execution failed or no market_data stage ran.
+   */
+  readonly liveMarketData?: LiveMarketDataPayload | undefined;
 }

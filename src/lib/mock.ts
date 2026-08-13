@@ -7,7 +7,7 @@ export interface Provider {
   id: string;
   name: string;
   category: string;
-  price: number;
+  price?: number | undefined;
   quality: number;
   reliability: number;
   latency: number;
@@ -26,6 +26,20 @@ export interface Provider {
    * Populated only on planningProviders; undefined on providers/demoProviders.
    */
   capabilities?: readonly string[] | undefined;
+  /**
+   * Metric source transparency (Milestone #4).
+   * "fixture"  — invented demo value
+   * "declared" — stated by provider documentation
+   * "observed" — measured by MeterMind at runtime
+   * "unknown"  — not yet determined
+   */
+  metricSource?: "fixture" | "declared" | "observed" | "unknown" | undefined;
+  /**
+   * Execution mode for this provider.
+   * "demo" — local simulation only (default for all existing providers)
+   * "live" — real external API calls
+   */
+  mode?: "demo" | "live" | undefined;
 }
 
 export interface Procurement {
@@ -597,10 +611,43 @@ const PROVIDER_CAPABILITIES: Record<string, readonly string[]> = {
   codemodel:   ["code_analysis"],
   linguaapi:   ["translation"],
   visionapi:   ["image_analysis"],
+  coingecko:   ["market_data"],
 };
 
 export const planningProviders: Provider[] = providers.map((p) => ({
   ...p,
   capabilities: PROVIDER_CAPABILITIES[p.id] ?? [],
+  metricSource: "fixture" as const,
+  mode: "demo" as const,
 }));
+
+/**
+ * CoinGecko live provider metadata entry.
+ *
+ * Price model (Milestone #4.1):
+ * - price is undefined/omitted entirely to represent that the per-call price is unknown/not applicable.
+ *
+ * Metrics (Milestone #4):
+ * - quality / reliability / latency are 0 ("unknown" metric source).
+ */
+export const COINGECKO_PROVIDER_ENTRY: Provider = {
+  id: "coingecko",
+  name: "CoinGecko",
+  category: "market-data",
+  // price is omitted (unknown)
+  quality: 0,
+  reliability: 0,
+  latency: 0,
+  score: 0,
+  jobs: 0,
+  failed: 0,
+  spend: 0,
+  trend: 0,
+  assessment: "Live CoinGecko Demo API. Metrics are not yet observed — do not use for scoring.",
+  priceHistory: [],
+  qualityHistory: [],
+  capabilities: ["market_data"],
+  metricSource: "unknown" as const,
+  mode: "live" as const,
+};
 

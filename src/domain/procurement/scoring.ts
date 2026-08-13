@@ -59,6 +59,8 @@ export function evaluateProcurement(
   const excluded = (constraints.excludedProviders || []).map((p) => p.toLowerCase());
   const preferred = (constraints.preferredProviders || []).map((p) => p.toLowerCase());
 
+  const hasLiveProvider = providerCatalog.some((p) => p.mode === "live");
+
   // 2. Filter Providers by Policy Constraints (Budget determines eligibility only)
   const evaluatedAll: EvaluatedProvider[] = providerCatalog.map((p) => {
     const disqualificationReasons: string[] = [];
@@ -72,15 +74,24 @@ export function evaluateProcurement(
       disqualificationReasons.push(`Excluded by user policy`);
     }
 
-    if (p.price > request.budget) {
+    // If a live provider is available, disqualify demo providers
+    if (hasLiveProvider && p.mode === "demo") {
       disqualificationReasons.push(
-        `Exceeds maximum task budget ($${p.price.toFixed(3)} vs $${request.budget.toFixed(2)})`,
+        `Demo provider bypassed because a live provider is available`
       );
     }
 
-    if (constraints.maximumProviderPrice && p.price > constraints.maximumProviderPrice) {
+    const hasPrice = p.price !== undefined && p.price !== null;
+
+    if (hasPrice && p.price! > request.budget) {
       disqualificationReasons.push(
-        `Exceeds maximum provider price limit ($${p.price.toFixed(3)} vs $${constraints.maximumProviderPrice.toFixed(3)})`,
+        `Exceeds maximum task budget ($${p.price!.toFixed(3)} vs $${request.budget.toFixed(2)})`,
+      );
+    }
+
+    if (hasPrice && constraints.maximumProviderPrice && p.price! > constraints.maximumProviderPrice) {
+      disqualificationReasons.push(
+        `Exceeds maximum provider price limit ($${p.price!.toFixed(3)} vs $${constraints.maximumProviderPrice.toFixed(3)})`,
       );
     }
 
@@ -112,7 +123,7 @@ export function evaluateProcurement(
       spend: p.spend || 0,
       trend: p.trend || 0,
       assessment: p.assessment || "",
-      priceHistory: p.priceHistory || [p.price],
+      priceHistory: p.priceHistory || (hasPrice ? [p.price!] : []),
       qualityHistory: p.qualityHistory || [p.quality],
       priceScore: 0,
       qualityScore: p.quality,
@@ -129,7 +140,7 @@ export function evaluateProcurement(
   const rejected = evaluatedAll.filter((p) => !p.isQualified);
 
   if (qualified.length === 0) {
-    const isBudgetExceeded = providerCatalog.every((p) => p.price > request.budget);
+    const isBudgetExceeded = providerCatalog.every((p) => typeof p.price === "number" && p.price > request.budget);
     return {
       status: isBudgetExceeded ? "BUDGET_TOO_LOW" : "NO_COMPATIBLE_PROVIDERS",
       request,
@@ -137,8 +148,8 @@ export function evaluateProcurement(
       rankedProviders: [],
       rejectedProviders: rejected,
       estimatedComparableCost: 0,
-      selectedCost: 0,
-      estimatedSavings: 0,
+      selectedCost: undefined,
+      estimatedSavings: undefined,
       decisionReasons: [],
       errorMessage: isBudgetExceeded
         ? `Budget of $${request.budget.toFixed(2)} is too low. No providers available within this budget.`
@@ -153,17 +164,25 @@ export function evaluateProcurement(
   }
 
   // 3. Min-Max Normalization Across Qualified Candidate Set
-  const minPrice = Math.min(...qualified.map((p) => p.price));
-  const maxPrice = Math.max(...qualified.map((p) => p.price));
+  const qualifiedPrices = qualified
+    .map((p) => p.price)
+    .filter((pr): pr is number => typeof pr === "number");
+
+  const minPrice = qualifiedPrices.length > 0 ? Math.min(...qualifiedPrices) : 0;
+  const maxPrice = qualifiedPrices.length > 0 ? Math.max(...qualifiedPrices) : 0;
   const minLatency = Math.min(...qualified.map((p) => p.latency));
   const maxLatency = Math.max(...qualified.map((p) => p.latency));
 
   qualified.forEach((p) => {
     // Price Score: lowest qualified price receives 100, highest receives 0 (safe equal price fallback: 100)
-    p.priceScore =
-      maxPrice === minPrice
-        ? 100
-        : Math.round(((maxPrice - p.price) / (maxPrice - minPrice)) * 100);
+    if (typeof p.price !== "number") {
+      p.priceScore = 100;
+    } else {
+      p.priceScore =
+        maxPrice === minPrice
+          ? 100
+          : Math.round(((maxPrice - p.price) / (maxPrice - minPrice)) * 100);
+    }
 
     // Latency Score: lowest latency receives 100, highest receives 0 (safe equal latency fallback: 100)
     p.latencyScore =
@@ -192,7 +211,11 @@ export function evaluateProcurement(
     if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
     if (b.reliability !== a.reliability) return b.reliability - a.reliability;
     if (b.quality !== a.quality) return b.quality - a.quality;
-    if (a.price !== b.price) return a.price - b.price;
+
+    const aPrice = typeof a.price === "number" ? a.price : Infinity;
+    const bPrice = typeof b.price === "number" ? b.price : Infinity;
+    if (aPrice !== bPrice) return aPrice - bPrice;
+
     if (a.latency !== b.latency) return a.latency - b.latency;
     return (a.id || a.name).localeCompare(b.id || b.name);
   });
@@ -202,44 +225,56 @@ export function evaluateProcurement(
 
   // 5. Estimated Savings Baseline (Next-Best Qualified Alternative)
   const alternative = qualified.length > 1 ? qualified[1] : undefined;
-  const estimatedComparableCost = alternative
+  const estimatedComparableCost = alternative && typeof alternative.price === "number"
     ? Number(alternative.price.toFixed(3))
-    : Number(winner.price.toFixed(3));
+    : (winner && typeof winner.price === "number" ? Number(winner.price.toFixed(3)) : 0);
   const comparisonProvider = alternative ? alternative.name : undefined;
-  const selectedCost = Number(winner.price.toFixed(3));
-  const estimatedSavings = alternative
+  const selectedCost = typeof winner.price === "number" ? Number(winner.price.toFixed(3)) : undefined;
+  const estimatedSavings = alternative && typeof alternative.price === "number" && typeof winner.price === "number"
     ? Number(Math.max(0, alternative.price - winner.price).toFixed(3))
-    : 0;
+    : (typeof winner.price === "number" ? 0 : undefined);
 
   // 6. Decision Rationale Generator
   const decisionReasons: string[] = [];
 
-  decisionReasons.push(
-    `${winner.name} achieved the highest weighted score (${winner.totalScore}/100) under your ${priority} priority.`,
-  );
-
-  if (alternative && alternative.price > winner.price) {
-    const pctLower = Math.round(((alternative.price - winner.price) / alternative.price) * 100);
+  if (winner.metricSource === "unknown") {
     decisionReasons.push(
-      `Priced at $${selectedCost.toFixed(3)}, which is ${pctLower}% cheaper than the next-best qualified alternative (${alternative.name} at $${alternative.price.toFixed(3)}).`,
+      `${winner.name} was selected because it is the only configured live provider for this service category, and historical quality/reliability metrics are not yet observed or comparable.`
     );
   } else {
-    decisionReasons.push(`Delivers optimal value at $${selectedCost.toFixed(3)} per execution.`);
+    decisionReasons.push(
+      `${winner.name} achieved the highest weighted score (${winner.totalScore}/100) under your ${priority} priority.`
+    );
   }
 
-  decisionReasons.push(
-    `Quality score ${winner.quality}/100 and reliability ${winner.reliability}% satisfy all task thresholds.`,
-  );
+  if (selectedCost !== undefined) {
+    if (alternative && typeof alternative.price === "number") {
+      const pctLower = Math.round(((alternative.price - winner.price!) / alternative.price) * 100);
+      decisionReasons.push(
+        `Priced at $${selectedCost.toFixed(3)}, which is ${pctLower}% cheaper than the next-best qualified alternative (${alternative.name} at $${alternative.price.toFixed(3)}).`
+      );
+    } else {
+      decisionReasons.push(`Delivers optimal value at $${selectedCost.toFixed(3)} per execution.`);
+    }
+  } else {
+    decisionReasons.push(`Price is unknown or not applicable (subscription/free tier) for this live provider.`);
+  }
+
+  if (winner.metricSource !== "unknown") {
+    decisionReasons.push(
+      `Quality score ${winner.quality}/100 and reliability ${winner.reliability}% satisfy all task thresholds.`
+    );
+  }
 
   let whyCheapestWasNotSelected: string | undefined;
 
-  const cheaperProvider = evaluatedAll.find((p) => p.price < winner.price);
-  if (cheaperProvider) {
+  const cheaperProvider = evaluatedAll.find((p) => typeof p.price === "number" && typeof winner.price === "number" && p.price < winner.price);
+  if (cheaperProvider && typeof winner.price === "number") {
     if (!cheaperProvider.isQualified) {
       const reason = cheaperProvider.disqualificationReasons?.join("; ") || "failed constraints";
-      whyCheapestWasNotSelected = `${cheaperProvider.name} was cheaper at $${cheaperProvider.price.toFixed(3)}, but was rejected because it ${reason.toLowerCase()}.`;
+      whyCheapestWasNotSelected = `${cheaperProvider.name} was cheaper at $${cheaperProvider.price!.toFixed(3)}, but was rejected because it ${reason.toLowerCase()}.`;
     } else {
-      whyCheapestWasNotSelected = `${cheaperProvider.name} was cheaper at $${cheaperProvider.price.toFixed(3)}, but scored lower overall (${cheaperProvider.totalScore} vs ${winner.totalScore}) due to lower quality/reliability.`;
+      whyCheapestWasNotSelected = `${cheaperProvider.name} was cheaper at $${cheaperProvider.price!.toFixed(3)}, but scored lower overall (${cheaperProvider.totalScore} vs ${winner.totalScore}) due to lower quality/reliability.`;
     }
   }
 

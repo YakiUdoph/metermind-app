@@ -346,7 +346,7 @@ export class DemoProviderAdapter implements ProviderAdapter {
     return this._available;
   }
 
-  execute(request: ServiceExecutionRequest): ServiceExecutionResult {
+  async execute(request: ServiceExecutionRequest): Promise<ServiceExecutionResult> {
     const startedAt = Date.now();
 
     // Validate: this adapter must support the requested service

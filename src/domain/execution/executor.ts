@@ -8,7 +8,7 @@
  *     → For each group, for each service:
  *         1. Resolve adapter from registry
  *         2. Budget guard (provider.price <= allocatedBudget)
- *         3. Execute via adapter
+ *         3. Execute via adapter (async — supports live network adapters)
  *         4. Forward payload as priorContext to next group
  *     → Assemble ExecutionResult (audit object)
  *
@@ -18,12 +18,15 @@
  *   - On any failure, completed stages are preserved in serviceExecutions.
  *   - Partial success is never labelled as SUCCESS.
  *   - finalResult is only set when all stages complete successfully.
+ *   - overallExecutionMode is "live" only when ALL stages used live adapters.
+ *   - liveMarketData is populated from the last successful market_data stage.
  */
 
 import type {
   ExecutionResult,
   ServiceExecutionResult,
   ServiceExecutionRequest,
+  LiveMarketDataPayload,
 } from "./types";
 import type {
   ProcurementPlan,
@@ -45,7 +48,7 @@ interface ServicePair {
 /**
  * Groups service pairs by executionOrder, returns them sorted ascending.
  * Services in the same group are "parallelizable" per the planner metadata;
- * for M3 we execute them sequentially within the group for correctness.
+ * for M3/M4 we execute them sequentially within the group for correctness.
  */
 function groupByExecutionOrder(
   requirements: readonly ServiceRequirement[],
@@ -77,17 +80,23 @@ function buildFailedResult(
   errorMessage: string,
 ): ExecutionResult {
   const completedAt = Date.now();
+  const overallExecutionMode =
+    completedExecutions.length > 0 &&
+    completedExecutions.every((e) => e.executionMode === "live")
+      ? "live" as const
+      : "demo" as const;
+
   return {
     task: plan.originalTask,
     plan,
     serviceExecutions: completedExecutions,
     status,
-    overallExecutionMode: "demo",
+    overallExecutionMode,
     startedAt,
     completedAt,
     totalMeasuredLatencyMs: completedExecutions.reduce((s, e) => s + e.measuredLatencyMs, 0),
     totalDeclaredCost: Number(
-      completedExecutions.reduce((s, e) => s + e.declaredCost, 0).toFixed(3),
+      completedExecutions.reduce((s, e) => s + (e.declaredCost ?? 0), 0).toFixed(3),
     ),
     totalAllocatedBudget: plan.totalAllocatedBudget,
     finalResult: null,
@@ -106,11 +115,14 @@ function buildFailedResult(
  * @param plan     - A successful ProcurementPlan from planTask().
  * @param registry - Adapter registry (defaults to createDefaultRegistry()).
  * @returns        - A complete ExecutionResult audit object. Never throws.
+ *
+ * Async: required because live adapters (e.g. CoinGecko) perform real HTTP calls.
+ * Demo adapters return Promise.resolve(syncResult) and are not affected.
  */
-export function executePlan(
+export async function executePlan(
   plan: ProcurementPlan,
   registry?: AdapterRegistry,
-): ExecutionResult {
+): Promise<ExecutionResult> {
   const reg = registry ?? createDefaultRegistry();
   const startedAt = Date.now();
   const completedExecutions: ServiceExecutionResult[] = [];
@@ -149,7 +161,8 @@ export function executePlan(
       }
 
       // ── Budget guard ──────────────────────────────────────────────────────
-      if (selectedProvider.price > allocatedBudget) {
+      const hasPrice = selectedProvider.price !== undefined && selectedProvider.price !== null;
+      if (hasPrice && selectedProvider.price! > allocatedBudget) {
         const failedExec: ServiceExecutionResult = {
           status: "EXECUTION_BUDGET_EXCEEDED",
           service: requirement.service,
@@ -163,7 +176,7 @@ export function executePlan(
           declaredCost: selectedProvider.price,
           allocatedBudget,
           errorMessage:
-            `Provider cost $${selectedProvider.price.toFixed(3)} exceeds ` +
+            `Provider cost $${selectedProvider.price!.toFixed(3)} exceeds ` +
             `allocated budget $${allocatedBudget.toFixed(3)} for service "${requirement.service}".`,
         };
         completedExecutions.push(failedExec);
@@ -204,7 +217,7 @@ export function executePlan(
         );
       }
 
-      // ── Execute ───────────────────────────────────────────────────────────
+      // ── Execute (async — supports live network adapters) ──────────────────
       const execRequest: ServiceExecutionRequest = {
         service: requirement.service,
         task: plan.originalTask,
@@ -213,7 +226,7 @@ export function executePlan(
         selectedProvider,
       };
 
-      const execResult = resolved.adapter.execute(execRequest);
+      const execResult = await resolved.adapter.execute(execRequest);
       completedExecutions.push(execResult);
 
       if (execResult.status !== "SUCCESS") {
@@ -234,16 +247,28 @@ export function executePlan(
   // ── All stages succeeded — assemble the audit object ─────────────────────
   const completedAt = Date.now();
   const totalDeclaredCost = Number(
-    completedExecutions.reduce((s, e) => s + e.declaredCost, 0).toFixed(3),
+    completedExecutions.reduce((s, e) => s + (e.declaredCost ?? 0), 0).toFixed(3),
   );
   const totalMeasuredLatencyMs = completedExecutions.reduce((s, e) => s + e.measuredLatencyMs, 0);
+
+  // overallExecutionMode is "live" only when every stage used a live adapter
+  const overallExecutionMode: "demo" | "live" =
+    completedExecutions.every((e) => e.executionMode === "live") ? "live" : "demo";
+
+  // Extract structured market-data payload from the last successful market_data stage
+  const liveMarketData: LiveMarketDataPayload | undefined = (() => {
+    const marketExec = [...completedExecutions]
+      .reverse()
+      .find((e) => e.service === "market_data" && e.structuredPayload !== undefined);
+    return marketExec?.structuredPayload;
+  })();
 
   return {
     task: plan.originalTask,
     plan,
     serviceExecutions: completedExecutions,
     status: "SUCCESS",
-    overallExecutionMode: "demo", // "live" only when all adapters are live (future milestone)
+    overallExecutionMode,
     startedAt,
     completedAt,
     totalMeasuredLatencyMs,
@@ -252,5 +277,6 @@ export function executePlan(
     finalResult: priorContext,
     errorMessage: undefined,
     failedService: undefined,
+    liveMarketData,
   };
 }

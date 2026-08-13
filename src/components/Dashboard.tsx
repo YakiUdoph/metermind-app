@@ -494,7 +494,7 @@ function ProviderView({
                 <td className="px-3 py-3 text-[13px] text-paper">{p.name}</td>
                 <td className="px-3 py-3 text-[13px] text-ash">{p.category}</td>
                 <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">
-                  {currency(p.price, 3)}
+                  {currency(p.price ?? 0, 3)}
                 </td>
                 <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">{p.quality}</td>
                 <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">
@@ -536,7 +536,7 @@ function ProviderView({
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-6">
-          <Metric label="Price" value={currency(provider.price, 3)} />
+          <Metric label="Price" value={currency(provider.price ?? 0, 3)} />
           <Metric label="Quality" value={`${provider.quality}/100`} />
           <Metric label="Reliability" value={`${provider.reliability}%`} />
           <Metric label="Latency" value={`${provider.latency}ms`} />

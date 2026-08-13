@@ -107,10 +107,10 @@ describe("MeterMind Dynamic Procurement Engine Hardening Suite", () => {
       { task: baseTask, budget: 2.0, priority: "balanced" },
       demoProviders,
     );
-    assert.ok(result.estimatedSavings >= 0);
+    assert.ok(result.estimatedSavings! >= 0);
     assert.equal(
       result.estimatedSavings,
-      Math.max(0, Number((result.estimatedComparableCost - result.selectedCost).toFixed(3))),
+      Math.max(0, Number((result.estimatedComparableCost - result.selectedCost!).toFixed(3))),
     );
   });
 

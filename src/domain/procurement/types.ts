@@ -45,8 +45,8 @@ export interface ProcurementResult {
   rankedProviders: EvaluatedProvider[];
   rejectedProviders: EvaluatedProvider[];
   estimatedComparableCost: number;
-  selectedCost: number;
-  estimatedSavings: number;
+  selectedCost?: number | undefined;
+  estimatedSavings?: number | undefined;
   comparisonProvider?: string | undefined;
   decisionReasons: string[];
   whyCheapestWasNotSelected?: string | undefined;

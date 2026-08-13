@@ -12,7 +12,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { Btn, Eyebrow, LiveDot } from "@/components/primitives";
-import { demoProviders, planningProviders, currency } from "@/lib/mock";
+import { demoProviders, planningProviders, currency as mockCurrency, COINGECKO_PROVIDER_ENTRY } from "@/lib/mock";
 import { evaluateProcurement } from "@/domain/procurement/scoring";
 import { planTask } from "@/domain/planning/planner";
 import { executePlan } from "@/domain/execution/executor";
@@ -25,6 +25,37 @@ import type { PlanningResult } from "@/domain/planning/types";
 import type { ExecutionResult } from "@/domain/execution/types";
 import { SERVICE_LABELS } from "@/domain/planning/types";
 import { cn } from "@/lib/utils";
+import { createServerFn } from "@tanstack/react-start";
+
+const currency = (n: number | null | undefined, decimals = 2): string => {
+  if (n === undefined || n === null || isNaN(n)) {
+    return "N/A";
+  }
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+};
+
+// ── Milestone #4 Server Functions ──────────────────────────────────────────
+
+/**
+ * Server function to securely execute a plan on the server.
+ * This runs inside the server/SSR runtime, having access to COINGECKO_API_KEY.
+ * The handler body is compiled out/extracted from client bundles.
+ */
+const executePlanOnServer = createServerFn({ method: "POST" })
+  .validator((plan: any) => plan)
+  .handler(async ({ data: plan }) => {
+    const { executeTaskPlan } = await import("@/server/execution");
+    return await executeTaskPlan(plan);
+  });
+
+/**
+ * Server function to check if the CoinGecko API key is configured.
+ */
+const checkCoinGeckoConfiguredServerFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { isCoinGeckoConfigured } = await import("@/server/execution");
+    return isCoinGeckoConfigured();
+  });
 
 export const Route = createFileRoute("/run-task")({
   head: () => ({
@@ -96,9 +127,18 @@ function RunTaskPage() {
   const [planResult, setPlanResult] = useState<PlanningResult | null>(null);
   const [execResult, setExecResult] = useState<ExecutionResult | null>(null);
 
+  const [liveConfigured, setLiveConfigured] = useState(false);
+  const [forceDemo, setForceDemo] = useState(false);
+
   const activeSteps = mode === "full" ? PLANNING_STEPS : SIMPLE_STEPS;
   const running = step >= 0 && step < activeSteps.length;
   const finished = step >= activeSteps.length;
+
+  useEffect(() => {
+    checkCoinGeckoConfiguredServerFn().then((res) => {
+      setLiveConfigured(res);
+    });
+  }, []);
 
   useEffect(() => {
     if (step < 0 || finished) return;
@@ -107,7 +147,7 @@ function RunTaskPage() {
     return () => window.clearTimeout(id);
   }, [step, finished]);
 
-  const handleStartProcurement = () => {
+  const handleStartProcurement = async () => {
     const parsedBudget = parseFloat(budget) || 0;
     const mappedPriority = priority.toLowerCase().replace(" ", "-") as ProcurementPriority;
     const constraints = {
@@ -123,6 +163,10 @@ function RunTaskPage() {
     };
 
     if (mode === "full") {
+      const catalog = liveConfigured && !forceDemo
+        ? [...planningProviders, COINGECKO_PROVIDER_ENTRY]
+        : planningProviders;
+
       const pr = planTask(
         {
           task,
@@ -130,14 +174,29 @@ function RunTaskPage() {
           priority: mappedPriority,
           constraints,
         },
-        planningProviders,
+        catalog,
       );
       setPlanResult(pr);
       setResult(null);
       setExecResult(null);
-      // Execute the plan immediately (synchronous in M3; async in future)
+
+      setStep(0);
+
       if (pr.status === "SUCCESS" && pr.plan) {
-        setExecResult(executePlan(pr.plan));
+        const usesCoinGecko = pr.plan.serviceResults.some(
+          (r) => r.procurementResult.selectedProvider?.id === "coingecko"
+        );
+        try {
+          let res: ExecutionResult;
+          if (usesCoinGecko && !forceDemo) {
+            res = await executePlanOnServer({ data: pr.plan });
+          } else {
+            res = await executePlan(pr.plan);
+          }
+          setExecResult(res);
+        } catch (err) {
+          console.error("Execution failed", err);
+        }
       }
     } else {
       const request: ProcurementRequest = {
@@ -149,9 +208,47 @@ function RunTaskPage() {
       const res = evaluateProcurement(request, demoProviders);
       setResult(res);
       setPlanResult(null);
+      setStep(0);
     }
+  };
 
+  const handleRunInDemoMode = async () => {
+    setForceDemo(true);
     setStep(0);
+    setExecResult(null);
+
+    const parsedBudget = parseFloat(budget) || 0;
+    const mappedPriority = priority.toLowerCase().replace(" ", "-") as ProcurementPriority;
+    const constraints = {
+      minimumQuality: minQuality ? parseFloat(minQuality) : undefined,
+      minimumReliability: minReliability ? parseFloat(minReliability) : undefined,
+      maximumProviderPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+      preferredProviders: preferredProviders
+        ? preferredProviders.split(",").map((s) => s.trim())
+        : undefined,
+      excludedProviders: excludedProviders
+        ? excludedProviders.split(",").map((s) => s.trim())
+        : undefined,
+    };
+
+    const pr = planTask(
+      {
+        task,
+        totalBudget: parsedBudget,
+        priority: mappedPriority,
+        constraints,
+      },
+      planningProviders,
+    );
+    setPlanResult(pr);
+    if (pr.status === "SUCCESS" && pr.plan) {
+      try {
+        const res = await executePlan(pr.plan);
+        setExecResult(res);
+      } catch (err) {
+        console.error("Demo fallback execution failed", err);
+      }
+    }
   };
 
   // Simple mode helpers
@@ -327,6 +424,37 @@ function RunTaskPage() {
               </div>
             </div>
           ) : null}
+
+          {/* CoinGecko configuration & fallback indicator */}
+          <div className="mt-5 border-t border-border/60 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "h-2 w-2 rounded-full",
+                  liveConfigured ? "bg-emerald-500" : "bg-blocked"
+                )} />
+                <span className="text-[12px] font-medium text-mist">
+                  CoinGecko Live API: {liveConfigured ? "Configured" : "Not Configured"}
+                </span>
+              </div>
+              {liveConfigured && (
+                <label className="flex items-center gap-2 cursor-pointer text-[12px] text-smoke hover:text-mist">
+                  <input
+                    type="checkbox"
+                    checked={forceDemo}
+                    onChange={(e) => setForceDemo(e.target.checked)}
+                    className="rounded border-border text-lime focus:ring-lime h-3.5 w-3.5"
+                  />
+                  <span>Force Demo Mode</span>
+                </label>
+              )}
+            </div>
+            {!liveConfigured && (
+              <p className="mt-1 text-[11px] leading-relaxed text-ash">
+                Configure <code className="text-mist font-mono text-[10px]">COINGECKO_API_KEY</code> in your environment to enable real HTTP market data execution. Runs in simulated Demo mode otherwise.
+              </p>
+            )}
+          </div>
 
           <div className="mt-6">
             <Btn
@@ -512,10 +640,10 @@ function RunTaskPage() {
           {mode === "simple" && step >= 5 && isSuccess ? (
             <ul className="mono-num mt-4 space-y-1 rounded-lg border border-border bg-void px-3 py-3 text-[12px] text-fog">
               <li>→ Preparing purchase authorization…</li>
-              <li>→ Executing simulated transaction of ${winner?.price.toFixed(3) ?? "0.000"} via x402 rail…</li>
+              <li>→ Executing simulated transaction of ${winner?.price !== undefined ? winner.price.toFixed(3) : "N/A"} via x402 rail…</li>
               <li>→ Payment confirmed ✓</li>
               <li>→ Service execution verified ✓</li>
-              <li>→ Complete · estimated savings ${result?.estimatedSavings.toFixed(3)}</li>
+              <li>→ Complete · estimated savings ${result?.estimatedSavings !== undefined ? result.estimatedSavings.toFixed(3) : "0.000"}</li>
             </ul>
           ) : null}
 
@@ -554,8 +682,13 @@ function RunTaskPage() {
                         <Eyebrow className={execResult.status === "SUCCESS" ? "text-lime/80" : "text-blocked/80"}>
                           {execResult.status === "SUCCESS" ? "Execution Complete" : "Execution Failed"}
                         </Eyebrow>
-                        <span className="ml-auto rounded border border-lime/30 bg-lime/10 px-1.5 py-0.5 font-mono text-[9px] tracking-widest text-lime uppercase">
-                          DEMO
+                        <span className={cn(
+                          "ml-auto rounded border px-1.5 py-0.5 font-mono text-[9px] tracking-widest uppercase",
+                          execResult.overallExecutionMode === "live"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                            : "border-lime/30 bg-lime/10 text-lime"
+                        )}>
+                          {execResult.overallExecutionMode === "live" ? "LIVE" : "DEMO"}
                         </span>
                       </div>
                       <div className="mt-1.5 flex items-center gap-3 text-[11px] text-smoke">
@@ -568,6 +701,22 @@ function RunTaskPage() {
                           {currency(execResult.totalDeclaredCost, 3)} cost
                         </span>
                       </div>
+                      {execResult.status !== "SUCCESS" && (
+                        <div className="mt-2 border-t border-border/40 pt-2 text-left">
+                          <p className="text-[11.5px] leading-relaxed text-blocked">
+                            Reason: {execResult.errorMessage || execResult.status}
+                          </p>
+                          {["LIVE_PROVIDER_NOT_CONFIGURED", "LIVE_PROVIDER_AUTH_FAILED", "LIVE_PROVIDER_RATE_LIMITED", "LIVE_PROVIDER_UNAVAILABLE", "LIVE_PROVIDER_BAD_RESPONSE", "EXECUTION_TIMEOUT"].includes(execResult.status) && (
+                            <button
+                              type="button"
+                              onClick={handleRunInDemoMode}
+                              className="mt-2 w-full rounded border border-blocked/40 bg-blocked/10 py-1 text-[11px] font-mono tracking-[0.05em] text-paper hover:bg-blocked/20 transition-colors uppercase"
+                            >
+                              Run in Demo Mode
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -744,8 +893,13 @@ function RunTaskPage() {
                       <div className="mb-4 flex items-center gap-2">
                         <Zap size={14} className={execResult.status === "SUCCESS" ? "text-lime" : "text-blocked"} />
                         <Eyebrow>{execResult.status === "SUCCESS" ? "Execution Results" : "Execution Failed"}</Eyebrow>
-                        <span className="ml-auto rounded border border-lime/30 bg-lime/10 px-2 py-0.5 font-mono text-[10px] tracking-[0.1em] text-lime uppercase">
-                          DEMO EXECUTION
+                        <span className={cn(
+                          "ml-auto rounded border px-2 py-0.5 font-mono text-[10px] tracking-[0.1em] uppercase",
+                          execResult.overallExecutionMode === "live"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                            : "border-lime/30 bg-lime/10 text-lime"
+                        )}>
+                          {execResult.overallExecutionMode === "live" ? "LIVE EXECUTION" : "DEMO EXECUTION"}
                         </span>
                       </div>
                       <div className="space-y-3">
@@ -773,8 +927,13 @@ function RunTaskPage() {
                               <div className="flex items-center gap-2 text-[11px] text-smoke">
                                 <span className="mono-num">{ex.measuredLatencyMs}ms</span>
                                 <span className="mono-num text-ash">{currency(ex.declaredCost, 3)}</span>
-                                <span className="rounded border border-lime/25 bg-lime/[0.07] px-1.5 py-0.5 font-mono text-[9px] tracking-widest text-lime uppercase">
-                                  DEMO
+                                <span className={cn(
+                                  "rounded border px-1.5 py-0.5 font-mono text-[9px] tracking-widest uppercase",
+                                  ex.executionMode === "live"
+                                    ? "border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-400"
+                                    : "border-lime/25 bg-lime/[0.07] text-lime"
+                                )}>
+                                  {ex.executionMode === "live" ? "LIVE" : "DEMO"}
                                 </span>
                               </div>
                             </div>
@@ -785,7 +944,7 @@ function RunTaskPage() {
                             {ex.payload && ex.status === "SUCCESS" && (
                               <details className="mt-2.5">
                                 <summary className="cursor-pointer text-[11px] text-smoke hover:text-mist transition-colors">
-                                  View demo output
+                                  {ex.executionMode === "live" ? "View live output" : "View demo output"}
                                 </summary>
                                 <pre className="mono-num mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-void/80 p-2.5 text-[11px] leading-relaxed text-fog">
                                   {ex.payload}
@@ -813,8 +972,15 @@ function RunTaskPage() {
                           Allocated:{" "}
                           <strong className="mono-num text-mist">{currency(execResult.totalAllocatedBudget, 3)}</strong>
                         </span>
-                        <span className="ml-auto rounded border border-lime/30 bg-lime/[0.07] px-2 py-0.5 font-mono text-[9px] tracking-widest text-lime uppercase">
-                          mode: demo — not live api calls
+                        <span className={cn(
+                          "ml-auto rounded border px-2 py-0.5 font-mono text-[9px] tracking-widest uppercase",
+                          execResult.overallExecutionMode === "live"
+                            ? "border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-400"
+                            : "border-lime/30 bg-lime/[0.07] text-lime"
+                        )}>
+                          {execResult.overallExecutionMode === "live"
+                            ? "mode: live — real external api calls"
+                            : "mode: demo — not live api calls"}
                         </span>
                       </div>
                     </div>
@@ -825,7 +991,9 @@ function RunTaskPage() {
                     <div className="surface mt-5 rounded-xl p-5 md:p-6">
                       <Eyebrow>Final Task Output</Eyebrow>
                       <p className="mt-1 text-[12px] text-smoke">
-                        Result from the last completed stage
+                        {execResult.overallExecutionMode === "live"
+                          ? "Real external API output normalized by MeterMind"
+                          : "Result from the last completed stage"}
                       </p>
                       <pre className="mono-num mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-void p-3.5 text-[12px] leading-relaxed text-fog">
                         {execResult.finalResult}

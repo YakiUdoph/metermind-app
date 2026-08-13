@@ -29,8 +29,8 @@ export function ProcurementStage() {
 
   const winner = result.selectedProvider;
   const winnerName = winner?.name || "DataFlow";
-  const winnerPrice = winner ? currency(winner.price, 3) : "$0.040";
-  const winnerSavings = currency(result.estimatedSavings, 3);
+  const winnerPrice = winner ? currency(winner.price ?? 0, 3) : "$0.040";
+  const winnerSavings = currency(result.estimatedSavings ?? 0, 3);
 
   const PHASES = [
     "Understanding task…",
@@ -107,7 +107,7 @@ export function ProcurementStage() {
                   ) : null}
                 </div>
                 <div className="mono-num mt-1 flex items-center justify-between text-[11px] text-ash">
-                  <span>{currency(p.price, 3)}</span>
+                  <span>{currency(p.price ?? 0, 3)}</span>
                   <span className={cn(isWinner ? "text-lime font-medium" : "text-smoke")}>
                     Score {scoreToDisplay}
                   </span>
@@ -118,7 +118,7 @@ export function ProcurementStage() {
                     <div className="text-[12px] font-medium text-paper">{p.name}</div>
                     <dl className="mono-num mt-2 space-y-1 text-[11px]">
                       {[
-                        ["Price", currency(p.price, 3)],
+                        ["Price", currency(p.price ?? 0, 3)],
                         ["Quality", `${p.quality}/100`],
                         ["Reliability", `${p.reliability}%`],
                         ["Latency", `${p.latency}ms`],

@@ -82,7 +82,7 @@ class AlwaysFailAdapter implements ProviderAdapter {
   readonly supportedCapabilities: readonly ServiceCategory[] = ["web_search"];
   readonly executionMode = "demo" as const;
   isAvailable() { return true; }
-  execute(req: ServiceExecutionRequest): ServiceExecutionResult {
+  async execute(req: ServiceExecutionRequest): Promise<ServiceExecutionResult> {
     return {
       status: "EXECUTION_FAILED",
       service: req.service,
@@ -107,7 +107,7 @@ class UnavailableAdapter implements ProviderAdapter {
   readonly supportedCapabilities: readonly ServiceCategory[] = ["web_search"];
   readonly executionMode = "demo" as const;
   isAvailable() { return false; }
-  execute(req: ServiceExecutionRequest): ServiceExecutionResult {
+  async execute(req: ServiceExecutionRequest): Promise<ServiceExecutionResult> {
     const now = Date.now();
     return {
       status: "PROVIDER_UNAVAILABLE",
@@ -134,7 +134,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 1. Adapter basic execution ────────────────────────────────────────────
 
-  it("1. Demo adapter executes web_search successfully and returns demo payload", () => {
+  it("1. Demo adapter executes web_search successfully and returns demo payload", async () => {
     const adapter = new DemoProviderAdapter("dataflow", "DataFlow", ["web_search"]);
     const provider = syntheticProvider("dataflow", "DataFlow");
     const req: ServiceExecutionRequest = {
@@ -144,7 +144,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       allocatedBudget: 0.5,
       selectedProvider: provider,
     };
-    const result = adapter.execute(req);
+    const result = await adapter.execute(req);
     assert.equal(result.status, "SUCCESS");
     assert.equal(result.executionMode, "demo");
     assert.ok(typeof result.payload === "string" && result.payload.length > 0);
@@ -153,7 +153,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     assert.equal(result.service, "web_search");
   });
 
-  it("2. Demo adapter returns SERVICE_NOT_SUPPORTED for unsupported capability", () => {
+  it("2. Demo adapter returns SERVICE_NOT_SUPPORTED for unsupported capability", async () => {
     const adapter = new DemoProviderAdapter("linguaapi", "LinguaAPI", ["translation"]);
     const provider = syntheticProvider("linguaapi", "LinguaAPI");
     const req: ServiceExecutionRequest = {
@@ -163,13 +163,13 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       allocatedBudget: 0.5,
       selectedProvider: provider,
     };
-    const result = adapter.execute(req);
+    const result = await adapter.execute(req);
     assert.equal(result.status, "SERVICE_NOT_SUPPORTED");
     assert.equal(result.payload, null);
     assert.ok(typeof result.errorMessage === "string");
   });
 
-  it("3. Demo adapter returns INVALID_EXECUTION_REQUEST when provider ID mismatch", () => {
+  it("3. Demo adapter returns INVALID_EXECUTION_REQUEST when provider ID mismatch", async () => {
     const adapter = new DemoProviderAdapter("dataflow", "DataFlow", ["web_search"]);
     // selectedProvider.id does NOT match adapter.providerId
     const provider = syntheticProvider("searchx", "SearchX");
@@ -180,7 +180,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       allocatedBudget: 0.5,
       selectedProvider: provider,
     };
-    const result = adapter.execute(req);
+    const result = await adapter.execute(req);
     assert.equal(result.status, "INVALID_EXECUTION_REQUEST");
     assert.equal(result.payload, null);
   });
@@ -219,7 +219,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 3. Budget guard ───────────────────────────────────────────────────────
 
-  it("8. Budget guard blocks execution when provider price exceeds allocated budget", () => {
+  it("8. Budget guard blocks execution when provider price exceeds allocated budget", async () => {
     // Build a translate plan (LinguaAPI, price=$0.05) with a very tight budget
     const result = planTask(
       { task: "Translate this document into German.", totalBudget: 0.04, priority: "balanced" },
@@ -227,22 +227,23 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     );
     if (result.status !== "SUCCESS") return; // skip if planning fails for different reason
 
-    const execResult = executePlan(result.plan!);
-    if (result.plan!.serviceResults[0]!.procurementResult.selectedProvider!.price > result.plan!.serviceResults[0]!.allocatedBudget) {
+    const execResult = await executePlan(result.plan!);
+    const provider = result.plan!.serviceResults[0]?.procurementResult.selectedProvider;
+    if (provider && typeof provider.price === "number" && provider.price > result.plan!.serviceResults[0]!.allocatedBudget) {
       assert.equal(execResult.status, "EXECUTION_BUDGET_EXCEEDED");
       assert.equal(execResult.finalResult, null);
     }
     // If provider is within budget (test still verifies budget guard logic is present)
   });
 
-  it("9. Budget guard allows execution when provider price is within allocated budget", () => {
+  it("9. Budget guard allows execution when provider price is within allocated budget", async () => {
     const plan = buildPlan("Research AI news and summarize key findings.", 2.0);
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     // With budget $2.0, all services should be within allocation
     assert.equal(execResult.status, "SUCCESS");
     for (const exec of execResult.serviceExecutions) {
       assert.ok(
-        exec.declaredCost <= exec.allocatedBudget,
+        (exec.declaredCost ?? 0) <= exec.allocatedBudget,
         `Service ${exec.service}: cost ${exec.declaredCost} > budget ${exec.allocatedBudget}`,
       );
     }
@@ -250,18 +251,18 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 4. Single-service workflow ────────────────────────────────────────────
 
-  it("10. Single-service web_search workflow executes successfully end-to-end", () => {
+  it("10. Single-service web_search workflow executes successfully end-to-end", async () => {
     const plan = buildPlan("Find recent news about quantum computing.", 1.0);
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.equal(execResult.serviceExecutions.length, plan.serviceRequirements.length);
     assert.ok(typeof execResult.finalResult === "string" && execResult.finalResult.length > 0);
     assert.equal(execResult.plan.originalTask, plan.originalTask);
   });
 
-  it("11. Single-service code_analysis workflow executes and returns analysis report", () => {
+  it("11. Single-service code_analysis workflow executes and returns analysis report", async () => {
     const plan = buildPlan("Review and debug this Python function for memory leaks.", 1.0);
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.ok(execResult.finalResult?.includes("[DEMO]"));
     assert.ok(execResult.finalResult?.includes("Code Analysis"));
@@ -269,14 +270,14 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 5. Multi-service sequential pipeline ─────────────────────────────────
 
-  it("12. Multi-service sequential workflow (research_and_summarize) completes all 3 stages", () => {
+  it("12. Multi-service sequential workflow (research_and_summarize) completes all 3 stages", async () => {
     const plan = buildPlan(
       "Research the latest Ethereum ETF news and summarize the most important developments.",
       2.0,
     );
     assert.equal(plan.serviceRequirements.length, 3);
 
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.equal(execResult.serviceExecutions.length, 3);
 
@@ -286,12 +287,12 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     assert.ok(services.includes("summarization"));
   });
 
-  it("13. Output from earlier stage becomes priorContext for later stage", () => {
+  it("13. Output from earlier stage becomes priorContext for later stage", async () => {
     const plan = buildPlan(
       "Research the latest AI chip shortage news and summarize key findings.",
       2.0,
     );
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
 
     // The summarization stage's payload should reference "prior stage"
@@ -304,12 +305,12 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     );
   });
 
-  it("14. Final result comes from the last successful stage in the pipeline", () => {
+  it("14. Final result comes from the last successful stage in the pipeline", async () => {
     const plan = buildPlan(
       "Research today's AI market news and create a short competitive analysis.",
       2.0,
     );
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
 
     // finalResult should equal the payload of the last serviceExecution
@@ -319,7 +320,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 6. Parallel service metadata ─────────────────────────────────────────
 
-  it("15. Parallel services (market_comparison) both execute and metadata is preserved", () => {
+  it("15. Parallel services (market_comparison) both execute and metadata is preserved", async () => {
     const plan = buildPlan(
       "Find current Bitcoin and Ethereum prices across multiple exchanges and compare them.",
       1.0,
@@ -328,7 +329,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     const parallelReqs = plan.serviceRequirements.filter((r) => r.canParallelize);
     assert.ok(parallelReqs.length >= 2, "Expected at least 2 parallelizable services");
 
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.equal(execResult.serviceExecutions.length, 2);
 
@@ -340,7 +341,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 7. Failure propagation ────────────────────────────────────────────────
 
-  it("16. Failed intermediate stage prevents later stages from executing", () => {
+  it("16. Failed intermediate stage prevents later stages from executing", async () => {
     const plan = buildPlan(
       "Research the latest AI news and summarize findings.",
       2.0,
@@ -367,7 +368,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       ),
     } as typeof plan;
 
-    const execResult = executePlan(modifiedPlan, failRegistry);
+    const execResult = await executePlan(modifiedPlan, failRegistry);
     assert.notEqual(execResult.status, "SUCCESS");
     assert.equal(execResult.finalResult, null);
     // Only the first stage (web_search) was attempted
@@ -375,7 +376,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     assert.equal(execResult.serviceExecutions[0]?.status, "EXECUTION_FAILED");
   });
 
-  it("17. Completed stages are retained in failed ExecutionResult for audit", () => {
+  it("17. Completed stages are retained in failed ExecutionResult for audit", async () => {
     const plan = buildPlan(
       "Research the latest AI news and summarize findings.",
       2.0,
@@ -389,7 +390,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     sparseRegistry.register(new DemoProviderAdapter("researchapi", "ResearchAPI", ["web_search"]));
     sparseRegistry.register(new DemoProviderAdapter("insightai", "InsightAI", ["web_search"]));
 
-    const execResult = executePlan(plan, sparseRegistry);
+    const execResult = await executePlan(plan, sparseRegistry);
     // Should fail at content_extraction
     assert.notEqual(execResult.status, "SUCCESS");
     // But the first stage (web_search) should still be in serviceExecutions
@@ -403,12 +404,12 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 8. Demo mode labelling ────────────────────────────────────────────────
 
-  it("18. All demo execution results carry executionMode: 'demo' — never 'live'", () => {
+  it("18. All demo execution results carry executionMode: 'demo' — never 'live'", async () => {
     const plan = buildPlan(
       "Research today's AI market news and create a short competitive analysis.",
       2.0,
     );
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.equal(execResult.overallExecutionMode, "demo");
     for (const exec of execResult.serviceExecutions) {
@@ -424,7 +425,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     assert.ok(adapter.executionMode === "demo");
   });
 
-  it("20. Demo payload includes [DEMO] marker in all 7 service categories", () => {
+  it("20. Demo payload includes [DEMO] marker in all 7 service categories", async () => {
     const serviceToTask: Record<ServiceCategory, string> = {
       web_search: "Find recent news about AI.",
       content_extraction: "Scrape and extract product listings from this webpage.",
@@ -439,7 +440,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       const plan = planTask({ task, totalBudget: 1.0, priority: "balanced" }, planningProviders);
       if (plan.status !== "SUCCESS") continue; // skip unsupported categories
 
-      const execResult = executePlan(plan.plan!);
+      const execResult = await executePlan(plan.plan!);
       if (execResult.status !== "SUCCESS") continue;
 
       const exec = execResult.serviceExecutions.find((e) => e.service === service);
@@ -454,12 +455,12 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 9. Cost / budget invariants ───────────────────────────────────────────
 
-  it("21. Total declared execution cost does not exceed the task total budget", () => {
+  it("21. Total declared execution cost does not exceed the task total budget", async () => {
     const plan = buildPlan(
       "Research today's AI market news and create a short competitive analysis.",
       2.0,
     );
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.ok(
       execResult.totalDeclaredCost <= plan.totalBudget,
@@ -467,20 +468,20 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     );
   });
 
-  it("22. Execution audit totalAllocatedBudget matches plan totalAllocatedBudget", () => {
+  it("22. Execution audit totalAllocatedBudget matches plan totalAllocatedBudget", async () => {
     const plan = buildPlan("Find recent news about quantum computing.", 1.0);
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.totalAllocatedBudget, plan.totalAllocatedBudget);
   });
 
   // ── 10. Determinism ───────────────────────────────────────────────────────
 
-  it("23. Identical demo inputs produce identical payload strings (determinism)", () => {
+  it("23. Identical demo inputs produce identical payload strings (determinism)", async () => {
     const task = "Research the latest AI chip shortage news and summarize key findings.";
     const plan = buildPlan(task, 2.0);
 
-    const exec1 = executePlan(plan);
-    const exec2 = executePlan(plan);
+    const exec1 = await executePlan(plan);
+    const exec2 = await executePlan(plan);
 
     assert.equal(exec1.status, "SUCCESS");
     assert.equal(exec2.status, "SUCCESS");
@@ -496,9 +497,9 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 11. Execution does not re-rank / re-plan ──────────────────────────────
 
-  it("24. Executor uses the plan's selected provider — does not re-rank", () => {
+  it("24. Executor uses the plan's selected provider — does not re-rank", async () => {
     const plan = buildPlan("Research AI news and summarize.", 2.0);
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
 
     // Each execution's providerId must match the plan's selected provider
@@ -527,7 +528,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
 
   // ── 12. Invalid execution request ─────────────────────────────────────────
 
-  it("26. Plan with zero service requirements returns INVALID_EXECUTION_REQUEST", () => {
+  it("26. Plan with zero service requirements returns INVALID_EXECUTION_REQUEST", async () => {
     // Construct a synthetic plan with empty service arrays
     const realPlan = buildPlan("Find recent AI news.", 1.0);
     const emptyPlan = {
@@ -535,12 +536,12 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       serviceRequirements: [] as typeof realPlan.serviceRequirements,
       serviceResults: [] as typeof realPlan.serviceResults,
     };
-    const execResult = executePlan(emptyPlan);
+    const execResult = await executePlan(emptyPlan);
     assert.equal(execResult.status, "INVALID_EXECUTION_REQUEST");
     assert.equal(execResult.finalResult, null);
   });
 
-  it("27. translate_and_summarize executes both stages: translation then summarization", () => {
+  it("27. translate_and_summarize executes both stages: translation then summarization", async () => {
     const plan = buildPlan(
       "Translate this French article into English and summarize it.",
       2.0,
@@ -549,7 +550,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
     assert.equal(plan.serviceRequirements[0]!.service, "translation");
     assert.equal(plan.serviceRequirements[1]!.service, "summarization");
 
-    const execResult = executePlan(plan);
+    const execResult = await executePlan(plan);
     assert.equal(execResult.status, "SUCCESS");
     assert.equal(execResult.serviceExecutions.length, 2);
 
