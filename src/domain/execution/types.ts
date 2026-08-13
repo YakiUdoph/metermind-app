@@ -60,7 +60,10 @@ export type ExecutionStatusResult =
   /** Live provider returned a response that could not be parsed/validated. */
   | "LIVE_PROVIDER_BAD_RESPONSE"
   /** Discrepancy between live price feeds exceeds safety threshold. */
-  | "QUOTE_DISAGREEMENT";
+  | "QUOTE_DISAGREEMENT"
+  // ── Paid-provider x402 failures (Milestone #6) ─────────────────────────────
+  /** Payment was settled, but the provider failed to deliver the payload. */
+  | "PAID_BUT_DELIVERY_FAILED";
 
 // ---------------------------------------------------------------------------
 // Structured live market-data payload (Milestone #4)
@@ -114,6 +117,9 @@ export interface ServiceExecutionRequest {
   readonly selectedProvider: EvaluatedProvider;
   /** Maximum allowed wall-clock latency in ms (optional, adapter may honour it). */
   readonly maxLatencyMs?: number | undefined;
+  readonly procurementId?: string | undefined;
+  readonly taskId?: string | undefined;
+  readonly idempotencyKey?: string | undefined;
 }
 
 /** Result of a single service execution attempt. */
@@ -145,6 +151,9 @@ export interface ServiceExecutionResult {
   readonly declaredCost?: number | undefined;
   readonly allocatedBudget: number;
   readonly errorMessage?: string | undefined;
+  readonly paymentResult?: any | undefined;
+  readonly paymentAudit?: any | undefined;
+  readonly errorCode?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------

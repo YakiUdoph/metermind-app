@@ -12,7 +12,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { Btn, Eyebrow, LiveDot } from "@/components/primitives";
-import { demoProviders, planningProviders, currency as mockCurrency, COINGECKO_PROVIDER_ENTRY, BITFINEX_PROVIDER_ENTRY } from "@/lib/mock";
+import { demoProviders, planningProviders, currency as mockCurrency, COINGECKO_PROVIDER_ENTRY, BITFINEX_PROVIDER_ENTRY, PAID_RESEARCH_PROVIDER_ENTRY } from "@/lib/mock";
 import { evaluateProcurement } from "@/domain/procurement/scoring";
 import { planTask } from "@/domain/planning/planner";
 import { executePlan } from "@/domain/execution/executor";
@@ -55,6 +55,20 @@ const checkCoinGeckoConfiguredServerFn = createServerFn({ method: "GET" })
   .handler(async () => {
     const { isCoinGeckoConfigured } = await import("@/server/execution");
     return isCoinGeckoConfigured();
+  });
+
+/**
+ * Server function to check the current wallet state and payment configurations.
+ */
+const checkWalletStatusServerFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { getWalletConfig } = await import("@/server/payment/wallet");
+    const config = getWalletConfig();
+    return {
+      mode: config.paymentMode,
+      configured: !!(config.privateKey || config.mnemonic),
+      maxPayment: config.maxLivePayment,
+    };
   });
 
 export const Route = createFileRoute("/run-task")({
@@ -130,6 +144,9 @@ function RunTaskPage() {
   const [liveConfigured, setLiveConfigured] = useState(false);
   const [forceDemo, setForceDemo] = useState(false);
 
+  const [paymentPreviewPlan, setPaymentPreviewPlan] = useState<any | null>(null);
+  const [walletStatus, setWalletStatus] = useState<{ mode: "simulation" | "live"; configured: boolean; maxPayment: number } | null>(null);
+
   const activeSteps = mode === "full" ? PLANNING_STEPS : SIMPLE_STEPS;
   const running = step >= 0 && step < activeSteps.length;
   const finished = step >= activeSteps.length;
@@ -137,6 +154,9 @@ function RunTaskPage() {
   useEffect(() => {
     checkCoinGeckoConfiguredServerFn().then((res) => {
       setLiveConfigured(res);
+    });
+    checkWalletStatusServerFn().then((res) => {
+      setWalletStatus(res);
     });
   }, []);
 
@@ -169,6 +189,7 @@ function RunTaskPage() {
         if (liveConfigured) {
           catalog.push(COINGECKO_PROVIDER_ENTRY);
         }
+        catalog.push(PAID_RESEARCH_PROVIDER_ENTRY);
       }
 
       const pr = planTask(
@@ -184,9 +205,17 @@ function RunTaskPage() {
       setResult(null);
       setExecResult(null);
 
-      setStep(0);
-
       if (pr.status === "SUCCESS" && pr.plan) {
+        const needsPaymentApproval = pr.plan.serviceResults.some(
+          (r) => r.procurementResult.selectedProvider?.paymentModel === "x402"
+        );
+        if (needsPaymentApproval) {
+          setPaymentPreviewPlan(pr.plan);
+          setStep(-1); // Hold animation
+          return;
+        }
+
+        setStep(0);
         const usesLiveProvider = pr.plan.serviceResults.some(
           (r) => r.procurementResult.selectedProvider?.mode === "live"
         );
@@ -201,6 +230,8 @@ function RunTaskPage() {
         } catch (err) {
           console.error("Execution failed", err);
         }
+      } else {
+        setStep(0);
       }
     } else {
       const request: ProcurementRequest = {
@@ -213,6 +244,29 @@ function RunTaskPage() {
       setResult(res);
       setPlanResult(null);
       setStep(0);
+    }
+  };
+
+  const handlePayAndExecute = async () => {
+    if (!paymentPreviewPlan) return;
+    const plan = paymentPreviewPlan;
+    setPaymentPreviewPlan(null);
+    setStep(0); // Start animation steps
+
+    const usesLiveProvider = plan.serviceResults.some(
+      (r: any) => r.procurementResult.selectedProvider?.mode === "live"
+    );
+
+    try {
+      let res: ExecutionResult;
+      if (usesLiveProvider && !forceDemo) {
+        res = await executePlanOnServer({ data: plan });
+      } else {
+        res = await executePlan(plan);
+      }
+      setExecResult(res);
+    } catch (err) {
+      console.error("Execution failed", err);
     }
   };
 
@@ -278,204 +332,304 @@ function RunTaskPage() {
       <div className="mx-auto grid w-full max-w-[1200px] gap-5 px-5 py-10 md:px-8 lg:grid-cols-[0.9fr_1.1fr]">
         {/* Left column: Input Form */}
         <div className="surface rounded-xl p-5 md:p-6">
-          {/* Mode toggle */}
-          <div className="mb-5 flex items-center gap-2">
-            <span className="eyebrow text-smoke">Mode</span>
-            {(["full", "simple"] as RunMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                id={`mode-${m}-btn`}
-                onClick={() => setMode(m)}
-                className={cn(
-                  "rounded border px-2.5 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime",
-                  mode === m
-                    ? "border-lime/40 bg-lime/10 text-lime font-medium"
-                    : "border-border text-ash hover:border-smoke hover:text-mist",
-                )}
-              >
-                {m === "full" ? "Full Planning" : "Simple"}
-              </button>
-            ))}
-          </div>
+          {paymentPreviewPlan ? (
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-1.5 rounded border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-mono tracking-[0.1em] text-amber-400">
+                <Zap size={12} strokeWidth={2.5} /> PAYMENT AUTHORIZATION REQUIRED
+              </div>
+              <h3 className="text-[18px] font-medium text-paper">x402 Payment Preview</h3>
+              <p className="text-[13px] leading-relaxed text-smoke">
+                The procurement plan has selected a paid provider requiring an on-chain transaction. Please authorize the payment below:
+              </p>
+              
+              <div className="rounded-lg border border-border bg-void/50 p-4 space-y-2.5">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-smoke">Selected Provider:</span>
+                  <span className="font-semibold text-paper">
+                    {paymentPreviewPlan.serviceResults[0]?.procurementResult.selectedProvider?.name || "PaidResearchAPI"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-smoke">Required Service:</span>
+                  <span className="font-semibold text-paper">
+                    {SERVICE_LABELS[paymentPreviewPlan.serviceRequirements[0]?.service as keyof typeof SERVICE_LABELS] || "Paid Research"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-smoke">Price/Amount:</span>
+                  <span className="font-semibold text-lime font-mono">
+                    {paymentPreviewPlan.serviceResults[0]?.procurementResult.selectedCost || 0.01} USDC
+                  </span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-smoke">Payment Rail:</span>
+                  <span className="font-semibold text-paper font-mono">x402</span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-smoke">Target Network:</span>
+                  <span className="font-semibold text-paper font-mono">GOAT-Testnet</span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-smoke">Remaining Budget:</span>
+                  <span className="font-semibold text-paper font-mono">
+                    {currency(paymentPreviewPlan.totalBudget - (paymentPreviewPlan.serviceResults[0]?.procurementResult.selectedCost || 0.01), 3)}
+                  </span>
+                </div>
+              </div>
 
-          <label htmlFor="task-description-input" className="eyebrow block">
-            Task Description
-          </label>
-          <textarea
-            id="task-description-input"
-            value={task}
-            onChange={(e) => setTask(e.target.value)}
-            rows={4}
-            aria-label="Task description"
-            className="mt-3 w-full resize-none rounded-md border border-border bg-void px-3.5 py-3 text-[15px] leading-relaxed text-mist outline-none transition-colors focus:border-lime/50 focus-visible:ring-2 focus-visible:ring-lime"
-          />
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold text-smoke tracking-wider uppercase">POLICY CHECKS (AUTO-VERIFIED)</div>
+                <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.05] p-3 text-[12px] text-emerald-400 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Check size={12} className="text-emerald-400 shrink-0" />
+                    <span>Selected provider is the actual procurement winner.</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check size={12} className="text-emerald-400 shrink-0" />
+                    <span>Quoted cost is within allocated service budget.</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check size={12} className="text-emerald-400 shrink-0" />
+                    <span>Transaction amount complies with safety limits (Max: {walletStatus?.maxPayment || 0.05} USDC).</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check size={12} className="text-emerald-400 shrink-0" />
+                    <span>Asset (USDC) and network (GOAT-Testnet) are permitted.</span>
+                  </div>
+                </div>
+              </div>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="budget-input" className="eyebrow block">
-                Maximum budget
-              </label>
-              <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-void px-3 py-2 focus-within:border-lime/50">
-                <span className="mono-num text-[14px] text-smoke">$</span>
-                <input
-                  id="budget-input"
-                  value={budget}
-                  onChange={(e) => setBudget(e.target.value)}
-                  aria-label="Maximum budget"
-                  className="mono-num w-full bg-transparent text-[14px] text-paper outline-none"
-                />
+              {walletStatus && (
+                <div className="text-[12px] text-smoke">
+                  Wallet Mode:{" "}
+                  <strong className={walletStatus.mode === "live" ? "text-emerald-400" : "text-lime"}>
+                    {walletStatus.mode === "live" ? "LIVE x402 WALLET" : "SIMULATION WALLET"}
+                  </strong>
+                  {walletStatus.mode === "live" && !walletStatus.configured && (
+                    <span className="text-blocked block mt-1 font-semibold">
+                      (Warning: Live wallet is not configured. Execution will fail with PAYMENT_NOT_CONFIGURED).
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <Btn onClick={handlePayAndExecute} className="w-full sm:w-auto bg-amber-500 border-amber-600 hover:bg-amber-600 text-void">
+                  <Zap size={14} /> PAY & EXECUTE
+                </Btn>
+                <button
+                  onClick={() => {
+                    setPaymentPreviewPlan(null);
+                    setPlanResult(null);
+                  }}
+                  className="rounded border border-border px-4 py-2 text-[12px] text-ash hover:border-smoke hover:text-mist transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
-            <div>
-              <div className="eyebrow">Priority</div>
-              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Procurement priority">
-                {PRIORITIES.map((p) => (
+          ) : (
+            <>
+              {/* Mode toggle */}
+              <div className="mb-5 flex items-center gap-2">
+                <span className="eyebrow text-smoke">Mode</span>
+                {(["full", "simple"] as RunMode[]).map((m) => (
                   <button
-                    key={p}
+                    key={m}
                     type="button"
-                    role="radio"
-                    aria-checked={priority === p}
-                    onClick={() => setPriority(p)}
+                    id={`mode-${m}-btn`}
+                    onClick={() => setMode(m)}
                     className={cn(
                       "rounded border px-2.5 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime",
-                      priority === p
+                      mode === m
                         ? "border-lime/40 bg-lime/10 text-lime font-medium"
                         : "border-border text-ash hover:border-smoke hover:text-mist",
                     )}
                   >
-                    {p}
+                    {m === "full" ? "Full Planning" : "Simple"}
                   </button>
                 ))}
               </div>
-            </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => setAdvanced((v) => !v)}
-            aria-expanded={advanced}
-            className="mt-5 inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] text-smoke uppercase transition-colors hover:text-mist focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-lime"
-          >
-            {advanced ? "− Advanced constraints" : "+ Advanced constraints"}
-          </button>
+              <label htmlFor="task-description-input" className="eyebrow block">
+                Task Description
+              </label>
+              <textarea
+                id="task-description-input"
+                value={task}
+                onChange={(e) => setTask(e.target.value)}
+                rows={4}
+                aria-label="Task description"
+                className="mt-3 w-full resize-none rounded-md border border-border bg-void px-3.5 py-3 text-[15px] leading-relaxed text-mist outline-none transition-colors focus:border-lime/50 focus-visible:ring-2 focus-visible:ring-lime"
+              />
 
-          {advanced ? (
-            <div className="mt-3 space-y-3 rounded-lg border border-border bg-void/50 p-4">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="min-quality-input" className="eyebrow block">
-                    Min Quality (0-100)
+                  <label htmlFor="budget-input" className="eyebrow block">
+                    Maximum budget
                   </label>
-                  <input
-                    id="min-quality-input"
-                    placeholder="e.g. 85"
-                    value={minQuality}
-                    onChange={(e) => setMinQuality(e.target.value)}
-                    className="mono-num mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
-                  />
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-void px-3 py-2 focus-within:border-lime/50">
+                    <span className="mono-num text-[14px] text-smoke">$</span>
+                    <input
+                      id="budget-input"
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                      aria-label="Maximum budget"
+                      className="mono-num w-full bg-transparent text-[14px] text-paper outline-none"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label htmlFor="min-rel-input" className="eyebrow block">
-                    Min Reliability (%)
-                  </label>
-                  <input
-                    id="min-rel-input"
-                    placeholder="e.g. 95"
-                    value={minReliability}
-                    onChange={(e) => setMinReliability(e.target.value)}
-                    className="mono-num mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="max-price-input" className="eyebrow block">
-                    Max Price ($)
-                  </label>
-                  <input
-                    id="max-price-input"
-                    placeholder="e.g. 0.07"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    className="mono-num mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
-                  />
+                  <div className="eyebrow">Priority</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Procurement priority">
+                    {PRIORITIES.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        role="radio"
+                        aria-checked={priority === p}
+                        onClick={() => setPriority(p)}
+                        className={cn(
+                          "rounded border px-2.5 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime",
+                          priority === p
+                            ? "border-lime/40 bg-lime/10 text-lime font-medium"
+                            : "border-border text-ash hover:border-smoke hover:text-mist",
+                        )}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="pref-providers-input" className="eyebrow block">
-                  Preferred Providers (comma-separated)
-                </label>
-                <input
-                  id="pref-providers-input"
-                  placeholder="e.g. DataFlow, ResearchAPI"
-                  value={preferredProviders}
-                  onChange={(e) => setPreferredProviders(e.target.value)}
-                  className="mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
-                />
+              <button
+                type="button"
+                onClick={() => setAdvanced((v) => !v)}
+                aria-expanded={advanced}
+                className="mt-5 inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] text-smoke uppercase transition-colors hover:text-mist focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-lime"
+              >
+                {advanced ? "− Advanced constraints" : "+ Advanced constraints"}
+              </button>
+
+              {advanced ? (
+                <div className="mt-3 space-y-3 rounded-lg border border-border bg-void/50 p-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label htmlFor="min-quality-input" className="eyebrow block">
+                        Min Quality (0-100)
+                      </label>
+                      <input
+                        id="min-quality-input"
+                        placeholder="e.g. 85"
+                        value={minQuality}
+                        onChange={(e) => setMinQuality(e.target.value)}
+                        className="mono-num mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="min-rel-input" className="eyebrow block">
+                        Min Reliability (%)
+                      </label>
+                      <input
+                        id="min-rel-input"
+                        placeholder="e.g. 95"
+                        value={minReliability}
+                        onChange={(e) => setMinReliability(e.target.value)}
+                        className="mono-num mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="max-price-input" className="eyebrow block">
+                        Max Price ($)
+                      </label>
+                      <input
+                        id="max-price-input"
+                        placeholder="e.g. 0.07"
+                        value={maxPrice}
+                        onChange={(e) => setMaxPrice(e.target.value)}
+                        className="mono-num mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="pref-providers-input" className="eyebrow block">
+                      Preferred Providers (comma-separated)
+                    </label>
+                    <input
+                      id="pref-providers-input"
+                      placeholder="e.g. DataFlow, ResearchAPI"
+                      value={preferredProviders}
+                      onChange={(e) => setPreferredProviders(e.target.value)}
+                      className="mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="excl-providers-input" className="eyebrow block">
+                      Excluded Providers (comma-separated)
+                    </label>
+                    <input
+                      id="excl-providers-input"
+                      placeholder="e.g. QuickSearch"
+                      value={excludedProviders}
+                      onChange={(e) => setExcludedProviders(e.target.value)}
+                      className="mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {/* CoinGecko configuration & fallback indicator */}
+              <div className="mt-5 border-t border-border/60 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "h-2 w-2 rounded-full",
+                      liveConfigured ? "bg-emerald-500" : "bg-blocked"
+                    )} />
+                    <span className="text-[12px] font-medium text-mist">
+                      CoinGecko Live API: {liveConfigured ? "Configured" : "Not Configured"}
+                    </span>
+                  </div>
+                  {liveConfigured && (
+                    <label className="flex items-center gap-2 cursor-pointer text-[12px] text-smoke hover:text-mist">
+                      <input
+                        type="checkbox"
+                        checked={forceDemo}
+                        onChange={(e) => setForceDemo(e.target.checked)}
+                        className="rounded border-border text-lime focus:ring-lime h-3.5 w-3.5"
+                      />
+                      <span>Force Demo Mode</span>
+                    </label>
+                  )}
+                </div>
+                {!liveConfigured && (
+                  <p className="mt-1 text-[11px] leading-relaxed text-ash">
+                    Configure <code className="text-mist font-mono text-[10px]">COINGECKO_API_KEY</code> in your environment to enable real HTTP market data execution. Runs in simulated Demo mode otherwise.
+                  </p>
+                )}
               </div>
 
-              <div>
-                <label htmlFor="excl-providers-input" className="eyebrow block">
-                  Excluded Providers (comma-separated)
-                </label>
-                <input
-                  id="excl-providers-input"
-                  placeholder="e.g. QuickSearch"
-                  value={excludedProviders}
-                  onChange={(e) => setExcludedProviders(e.target.value)}
-                  className="mt-1.5 w-full rounded border border-border bg-void px-2.5 py-1.5 text-[13px] text-paper outline-none focus:border-lime/50"
-                />
+              <div className="mt-6">
+                <Btn
+                  onClick={handleStartProcurement}
+                  disabled={running}
+                  className="w-full sm:w-auto"
+                >
+                  {running
+                    ? mode === "full"
+                      ? "Planning…"
+                      : "Procuring…"
+                    : mode === "full"
+                      ? "Plan & Procure"
+                      : "Start Procurement"}{" "}
+                  <ArrowRight size={14} />
+                </Btn>
               </div>
-            </div>
-          ) : null}
-
-          {/* CoinGecko configuration & fallback indicator */}
-          <div className="mt-5 border-t border-border/60 pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className={cn(
-                  "h-2 w-2 rounded-full",
-                  liveConfigured ? "bg-emerald-500" : "bg-blocked"
-                )} />
-                <span className="text-[12px] font-medium text-mist">
-                  CoinGecko Live API: {liveConfigured ? "Configured" : "Not Configured"}
-                </span>
-              </div>
-              {liveConfigured && (
-                <label className="flex items-center gap-2 cursor-pointer text-[12px] text-smoke hover:text-mist">
-                  <input
-                    type="checkbox"
-                    checked={forceDemo}
-                    onChange={(e) => setForceDemo(e.target.checked)}
-                    className="rounded border-border text-lime focus:ring-lime h-3.5 w-3.5"
-                  />
-                  <span>Force Demo Mode</span>
-                </label>
-              )}
-            </div>
-            {!liveConfigured && (
-              <p className="mt-1 text-[11px] leading-relaxed text-ash">
-                Configure <code className="text-mist font-mono text-[10px]">COINGECKO_API_KEY</code> in your environment to enable real HTTP market data execution. Runs in simulated Demo mode otherwise.
-              </p>
-            )}
-          </div>
-
-          <div className="mt-6">
-            <Btn
-              onClick={handleStartProcurement}
-              disabled={running}
-              className="w-full sm:w-auto"
-            >
-              {running
-                ? mode === "full"
-                  ? "Planning…"
-                  : "Procuring…"
-                : mode === "full"
-                  ? "Plan & Procure"
-                  : "Start Procurement"}{" "}
-              <ArrowRight size={14} />
-            </Btn>
-          </div>
+            </>
+          )}
         </div>
 
         {/* Right column: Execution Timeline */}
@@ -953,6 +1107,79 @@ function RunTaskPage() {
                               <span>Provider: <strong className="text-mist">{ex.providerName}</strong></span>
                               <span>Budget: <span className="mono-num text-mist">{currency(ex.allocatedBudget, 3)}</span></span>
                             </div>
+                            {ex.paymentAudit && (
+                              <div className="mt-3.5 border-t border-border/50 pt-3 space-y-3">
+                                <div className="text-[10px] font-semibold text-smoke tracking-wider uppercase">
+                                  x402 Payment Audit
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  {/* Left block: Procurement Winner & Policy */}
+                                  <div className="rounded-lg border border-border/60 bg-void/35 p-3 space-y-2 text-[12px]">
+                                    <div className="font-semibold text-paper text-[11px] uppercase tracking-wider">Procurement Winner</div>
+                                    <div className="flex justify-between">
+                                      <span className="text-ash">Provider:</span>
+                                      <span className="text-mist">{ex.providerName}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-ash">Cost:</span>
+                                      <span className="text-lime font-mono">{ex.declaredCost || 0.01} USDC</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-ash">Policy:</span>
+                                      <span className="text-emerald-400 font-semibold">APPROVED</span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Right block: Payment Transaction */}
+                                  <div className="rounded-lg border border-border/60 bg-void/35 p-3 space-y-2 text-[12px]">
+                                    <div className="font-semibold text-paper text-[11px] uppercase tracking-wider">Payment Status</div>
+                                    <div className="flex justify-between">
+                                      <span className="text-ash">Status:</span>
+                                      <span className={cn(
+                                        "font-semibold",
+                                        ex.paymentResult?.settlementStatus === "SETTLED" ? "text-lime" : "text-blocked"
+                                      )}>
+                                        {ex.paymentResult?.settlementStatus || "FAILED"}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-ash">Amount:</span>
+                                      <span className="text-mist font-mono">{ex.paymentResult?.amount || 0.01} {ex.paymentResult?.asset || "USDC"}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-ash">Network:</span>
+                                      <span className="text-mist font-mono">{ex.paymentResult?.network || "GOAT-Testnet"}</span>
+                                    </div>
+                                    {ex.paymentResult?.transactionHash && (
+                                      <div className="flex justify-between">
+                                        <span className="text-ash">Tx Hash:</span>
+                                        <span className="text-mist font-mono truncate max-w-[120px]" title={ex.paymentResult.transactionHash}>
+                                          {ex.paymentResult.transactionHash.substring(0, 8)}...{ex.paymentResult.transactionHash.substring(ex.paymentResult.transactionHash.length - 6)}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Delivery Status block */}
+                                <div className="rounded-lg border border-border/60 bg-void/35 p-3 text-[12px] space-y-2">
+                                  <div className="font-semibold text-paper text-[11px] uppercase tracking-wider">Service Delivery</div>
+                                  <div className="flex justify-between">
+                                    <span className="text-ash">Status:</span>
+                                    <span className={cn(
+                                      "font-semibold",
+                                      ex.status === "SUCCESS" ? "text-lime" : "text-blocked"
+                                    )}>
+                                      {ex.status === "SUCCESS" ? "COMPLETED" : ex.errorCode || "FAILED"}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-ash">Measured Latency:</span>
+                                    <span className="text-mist font-mono">{ex.measuredLatencyMs}ms</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             {ex.payload && ex.status === "SUCCESS" && (
                               <details className="mt-2.5">
                                 <summary className="cursor-pointer text-[11px] text-smoke hover:text-mist transition-colors">

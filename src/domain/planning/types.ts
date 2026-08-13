@@ -23,7 +23,8 @@ export type ServiceCategory =
   | "translation"
   | "market_data"
   | "code_analysis"
-  | "image_analysis";
+  | "image_analysis"
+  | "paid_research";
 
 /** Human-readable labels for each service category. */
 export const SERVICE_LABELS: Record<ServiceCategory, string> = {
@@ -34,6 +35,7 @@ export const SERVICE_LABELS: Record<ServiceCategory, string> = {
   market_data: "Market Data",
   code_analysis: "Code Analysis",
   image_analysis: "Image Analysis",
+  paid_research: "Paid Research",
 };
 
 // ---------------------------------------------------------------------------
@@ -50,6 +52,7 @@ export type TaskIntentCategory =
   | "image_analysis_only"
   | "content_extraction_only"
   | "translate_only"
+  | "paid_research"
   | "unsupported";
 
 /**
@@ -110,6 +113,7 @@ export interface ServiceProcurementResult {
 
 /** The complete procurement plan assembled after all services have been scored. */
 export interface ProcurementPlan {
+  readonly id?: string | undefined;
   readonly originalTask: string;
   readonly intent: TaskIntent;
   readonly serviceRequirements: readonly ServiceRequirement[];

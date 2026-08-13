@@ -435,6 +435,7 @@ describe("MeterMind Service Execution — Adapter + Pipeline", () => {
       market_data: "Find current Bitcoin and Ethereum prices.",
       code_analysis: "Review and debug this Python function.",
       image_analysis: "Classify objects in this screenshot.",
+      paid_research: "Run premium paid research on AI trends.",
     };
 
     for (const [service, task] of Object.entries(serviceToTask) as [ServiceCategory, string][]) {

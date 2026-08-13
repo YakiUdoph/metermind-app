@@ -20,6 +20,7 @@ import { executePlan } from "@/domain/execution/executor";
 import { createDefaultRegistry } from "@/domain/execution/registry";
 import { createCoinGeckoAdapter, COINGECKO_PROVIDER_ID } from "@/server/providers/coingecko";
 import { BitfinexAdapter } from "@/server/providers/bitfinex";
+import { PaidResearchAdapter } from "@/server/providers/paid-research";
 import type { ProcurementPlan } from "@/domain/planning/types";
 import type { ExecutionResult } from "@/domain/execution/types";
 
@@ -50,6 +51,10 @@ function createServerRegistry() {
   // Register Bitfinex live adapter (public, unauthenticated)
   const bitfinexAdapter = new BitfinexAdapter();
   registry.register(bitfinexAdapter);
+ 
+  // Register PaidResearch live adapter (handles x402 payment verification)
+  const paidResearchAdapter = new PaidResearchAdapter();
+  registry.register(paidResearchAdapter);
 
   return registry;
 }

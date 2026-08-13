@@ -40,6 +40,8 @@ export interface Provider {
    * "live" — real external API calls
    */
   mode?: "demo" | "live" | undefined;
+  paymentModel?: "free" | "x402" | undefined;
+  paymentDestination?: string | undefined;
 }
 
 export interface Procurement {
@@ -265,6 +267,25 @@ export const providers: Provider[] = [
     priceHistory: [0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09],
     qualityHistory: [93, 93, 94, 94, 94, 94, 94],
   },
+  {
+    id: "paidresearchapi",
+    name: "PaidResearchAPI",
+    category: "Paid Research",
+    price: 0.01,
+    quality: 98,
+    reliability: 99.9,
+    latency: 350,
+    score: 98,
+    jobs: 1500,
+    failed: 1,
+    spend: 15.00,
+    trend: 0,
+    assessment: "Genuine mock x402-payable premium research API settled on GOAT Network.",
+    priceHistory: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
+    qualityHistory: [98, 98, 98, 98, 98, 98, 98],
+    paymentModel: "x402" as const,
+    paymentDestination: "0x789C402PaidResearchMerchantAddress0000"
+  }
 ];
 
 /** The four providers evaluated in the hero + live procurement demo. */
@@ -612,6 +633,7 @@ const PROVIDER_CAPABILITIES: Record<string, readonly string[]> = {
   linguaapi:   ["translation"],
   visionapi:   ["image_analysis"],
   coingecko:   ["market_data"],
+  paidresearchapi: ["paid_research"],
 };
 
 export const planningProviders: Provider[] = providers.map((p) => ({
@@ -670,6 +692,29 @@ export const BITFINEX_PROVIDER_ENTRY: Provider = {
   capabilities: ["market_data"],
   metricSource: "unknown" as const,
   mode: "live" as const,
+};
+
+export const PAID_RESEARCH_PROVIDER_ENTRY: Provider = {
+  id: "paidresearchapi",
+  name: "PaidResearchAPI",
+  category: "Paid Research",
+  price: 0.01,
+  quality: 98,
+  reliability: 99.9,
+  latency: 350,
+  score: 98,
+  jobs: 1500,
+  failed: 1,
+  spend: 15.00,
+  trend: 0,
+  assessment: "Genuine mock x402-payable premium research API settled on GOAT Network.",
+  priceHistory: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
+  qualityHistory: [98, 98, 98, 98, 98, 98, 98],
+  capabilities: ["paid_research"],
+  metricSource: "declared" as const,
+  mode: "live" as const,
+  paymentModel: "x402" as const,
+  paymentDestination: "0x789C402PaidResearchMerchantAddress0000"
 };
 
 

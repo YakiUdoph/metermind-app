@@ -17,11 +17,11 @@
 import type { ProviderAdapter, ExecutionStatusResult } from "./types";
 import type { ServiceCategory } from "@/domain/planning/types";
 import { DemoProviderAdapter } from "./adapters/demo";
-
+ 
 // ---------------------------------------------------------------------------
 // Capability map (mirrors PROVIDER_CAPABILITIES in mock.ts)
 // ---------------------------------------------------------------------------
-
+ 
 const DEMO_PROVIDER_CAPABILITIES: Record<string, readonly ServiceCategory[]> = {
   dataflow:    ["web_search", "content_extraction", "summarization", "market_data"],
   searchx:     ["web_search", "content_extraction", "market_data"],
@@ -33,8 +33,9 @@ const DEMO_PROVIDER_CAPABILITIES: Record<string, readonly ServiceCategory[]> = {
   linguaapi:   ["translation"],
   visionapi:   ["image_analysis"],
   coingecko:   ["market_data"],
+  paidresearchapi: ["paid_research"],
 };
-
+ 
 const DEMO_PROVIDER_NAMES: Record<string, string> = {
   dataflow:    "DataFlow",
   searchx:     "SearchX",
@@ -46,42 +47,43 @@ const DEMO_PROVIDER_NAMES: Record<string, string> = {
   linguaapi:   "LinguaAPI",
   visionapi:   "VisionAPI",
   coingecko:   "CoinGecko",
+  paidresearchapi: "PaidResearchAPI",
 };
-
+ 
 // ---------------------------------------------------------------------------
 // AdapterRegistry
 // ---------------------------------------------------------------------------
-
+ 
 /** Resolution result — either the adapter, or a typed failure code. */
 export type ResolveResult =
   | { ok: true; adapter: ProviderAdapter }
   | { ok: false; status: Extract<ExecutionStatusResult, "PROVIDER_ADAPTER_NOT_FOUND" | "SERVICE_NOT_SUPPORTED" | "PROVIDER_UNAVAILABLE"> };
-
+ 
 export class AdapterRegistry {
   private readonly adapters = new Map<string, ProviderAdapter>();
-
+ 
   /** Register a provider adapter. Overwrites any existing adapter with the same providerId. */
   register(adapter: ProviderAdapter): void {
     this.adapters.set(adapter.providerId, adapter);
   }
-
+ 
   /** Returns all adapters registered that support the given service category. */
   getAdaptersForService(service: ServiceCategory): ProviderAdapter[] {
     return Array.from(this.adapters.values()).filter((a) =>
       (a.supportedCapabilities as string[]).includes(service as string)
     );
   }
-
+ 
   /** Number of registered adapters. */
   get size(): number {
     return this.adapters.size;
   }
-
+ 
   /** Returns true if an adapter is registered for the given provider id. */
   has(providerId: string): boolean {
     return this.adapters.has(providerId);
   }
-
+ 
   /**
    * Resolves the adapter for the given provider and service.
    *
@@ -92,27 +94,27 @@ export class AdapterRegistry {
    */
   resolve(providerId: string, service: ServiceCategory): ResolveResult {
     const adapter = this.adapters.get(providerId);
-
+ 
     if (!adapter) {
       return { ok: false, status: "PROVIDER_ADAPTER_NOT_FOUND" };
     }
-
+ 
     if (!(adapter.supportedCapabilities as string[]).includes(service as string)) {
       return { ok: false, status: "SERVICE_NOT_SUPPORTED" };
     }
-
+ 
     if (!adapter.isAvailable()) {
       return { ok: false, status: "PROVIDER_UNAVAILABLE" };
     }
-
+ 
     return { ok: true, adapter };
   }
 }
-
+ 
 // ---------------------------------------------------------------------------
 // Default registry factory
 // ---------------------------------------------------------------------------
-
+ 
 /**
  * Creates and returns an AdapterRegistry pre-loaded with DemoProviderAdapter
  * instances for all nine providers in the planning catalog.
@@ -123,12 +125,12 @@ export class AdapterRegistry {
  */
 export function createDefaultRegistry(): AdapterRegistry {
   const registry = new AdapterRegistry();
-
+ 
   for (const [id, caps] of Object.entries(DEMO_PROVIDER_CAPABILITIES)) {
     registry.register(
       new DemoProviderAdapter(id, DEMO_PROVIDER_NAMES[id] ?? id, caps),
     );
   }
-
+ 
   return registry;
 }

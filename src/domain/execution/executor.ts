@@ -236,19 +236,22 @@ export async function executePlan(
         priorContext,
         allocatedBudget,
         selectedProvider,
+        procurementId: plan.id || "mock-proc-id",
+        taskId: plan.id || "mock-task-id",
+        idempotencyKey: `${plan.id || "mock-proc-id"}-${requirement.service}-${selectedProvider.id}`,
       };
-
+ 
       const isLiveMarketData =
         requirement.service === "market_data" &&
         selectedProvider.mode === "live";
-
+ 
       let execResult: ServiceExecutionResult;
-
+ 
       if (isLiveMarketData) {
         // Resolve all live adapters for market_data
         const liveAdapters = reg.getAdaptersForService("market_data")
           .filter((a) => a.executionMode === "live");
-
+ 
         if (liveAdapters.length >= 2) {
           // Run parallel probes
           const observationsPromise = liveAdapters.map(async (adapter) => {
@@ -259,13 +262,16 @@ export async function executePlan(
             } else if (adapter.providerId === "bitfinex") {
               providerEntry = { ...selectedProvider, id: "bitfinex", name: "Bitfinex" };
             }
-
+ 
             const req: ServiceExecutionRequest = {
               service: requirement.service,
               task: plan.originalTask,
               priorContext,
               allocatedBudget,
               selectedProvider: providerEntry,
+              procurementId: plan.id || "mock-proc-id",
+              taskId: plan.id || "mock-task-id",
+              idempotencyKey: `${plan.id || "mock-proc-id"}-${requirement.service}-${adapter.providerId}`,
             };
 
             let res: ServiceExecutionResult;
@@ -502,6 +508,29 @@ function composeFinalResult(
   if (completedExecutions.length === 0) return null;
 
   const intentCategory = plan.intent.category;
+
+  if (intentCategory === "paid_research") {
+    const paidExec = completedExecutions.find((e) => e.service === "paid_research");
+    if (paidExec) {
+      const isLive = paidExec.paymentResult?.network?.startsWith("GOAT") || process.env["PAYMENT_MODE"] === "live";
+      let resultText = "";
+      if (isLive) {
+        resultText += "=== LIVE x402 PAYMENT ===\n";
+      } else {
+        resultText += "=== SIMULATED PAYMENT ===\n";
+      }
+      resultText += `Service: ${paidExec.service}\n`;
+      resultText += `Provider: ${paidExec.providerName}\n`;
+      resultText += `Amount: ${paidExec.paymentResult?.amount || 0.01} ${paidExec.paymentResult?.asset || "USDC"}\n`;
+      resultText += `Network: ${paidExec.paymentResult?.network || "GOAT-Testnet"}\n`;
+      resultText += `Transaction Hash: ${paidExec.paymentResult?.transactionHash || "N/A"}\n`;
+      resultText += `Settlement Status: ${paidExec.paymentResult?.settlementStatus || "UNKNOWN"}\n`;
+      resultText += `Delivery Status: ${paidExec.status}\n\n`;
+      resultText += `=== SERVICE OUTPUT ===\n`;
+      resultText += `${paidExec.payload || "No output returned"}\n`;
+      return resultText;
+    }
+  }
 
   if (intentCategory === "market_comparison") {
     const marketExec = completedExecutions.find((e) => e.service === "market_data");

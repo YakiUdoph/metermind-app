@@ -78,6 +78,15 @@ const RESEARCH_KEYWORDS = [
   "development",
 ] as const;
 
+/** Matches paid/premium execution signals. */
+const PAID_KEYWORDS = [
+  "paid",
+  "premium",
+  "paid_research",
+  "paid research",
+  "expensive research",
+] as const;
+
 /** Matches market / financial / crypto price signals. */
 const MARKET_KEYWORDS = [
   "prices",
@@ -299,6 +308,16 @@ const INTENT_SERVICE_MAP: Record<
       budgetWeight: 0.35,
     },
   ],
+
+  paid_research: [
+    {
+      service: "paid_research",
+      executionOrder: 1,
+      canParallelize: false,
+      rationale: "Requires paid research on the selected network.",
+      budgetWeight: 1.0,
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -344,6 +363,17 @@ export function understandTask(task: string): TaskIntent {
   const matchedImage = findMatches(normalized, IMAGE_KEYWORDS);
   const matchedExtract = findMatches(normalized, EXTRACT_KEYWORDS);
   const matchedSearch = findMatches(normalized, SEARCH_KEYWORDS);
+  const matchedPaid = findMatches(normalized, PAID_KEYWORDS);
+
+  // Rule 0: paid research (extremely specific)
+  if (matchedPaid.length > 0) {
+    return {
+      originalTask: task,
+      category: "paid_research",
+      matchedKeywords: matchedPaid,
+      confidence: "high",
+    };
+  }
 
   // Rule 1: translate + summarize/analyze (most specific compound)
   if (matchedTranslate.length > 0 && matchedSummarize.length > 0) {

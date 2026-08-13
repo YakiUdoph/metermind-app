@@ -37,6 +37,7 @@ export const SERVICE_BUDGET_WEIGHTS: Record<ServiceCategory, number> = {
   web_search: 0.30,
   summarization: 0.25,
   content_extraction: 0.20,
+  paid_research: 0.35,
 };
 
 // ---------------------------------------------------------------------------
