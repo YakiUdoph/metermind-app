@@ -1,14 +1,29 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowRight, Check, Sparkles, AlertTriangle, XCircle } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Sparkles,
+  AlertTriangle,
+  XCircle,
+  Layers,
+  Zap,
+  Clock,
+  DollarSign,
+} from "lucide-react";
 import { Btn, Eyebrow, LiveDot } from "@/components/primitives";
-import { demoProviders, currency } from "@/lib/mock";
+import { demoProviders, planningProviders, currency } from "@/lib/mock";
 import { evaluateProcurement } from "@/domain/procurement/scoring";
+import { planTask } from "@/domain/planning/planner";
+import { executePlan } from "@/domain/execution/executor";
 import type {
   ProcurementRequest,
   ProcurementResult,
   ProcurementPriority,
 } from "@/domain/procurement/types";
+import type { PlanningResult } from "@/domain/planning/types";
+import type { ExecutionResult } from "@/domain/execution/types";
+import { SERVICE_LABELS } from "@/domain/planning/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/run-task")({
@@ -34,7 +49,8 @@ export const Route = createFileRoute("/run-task")({
 
 const PRIORITIES = ["Lowest Cost", "Balanced", "Highest Quality", "Fastest"] as const;
 
-const STEPS = [
+/** Steps shown in Simple Procurement mode */
+const SIMPLE_STEPS = [
   "Understanding task",
   "Determining required services",
   "Discovering providers",
@@ -45,6 +61,20 @@ const STEPS = [
   "Measuring result",
 ];
 
+/** Steps shown in Full Planning mode */
+const PLANNING_STEPS = [
+  "Understanding task",
+  "Detecting required services",
+  "Allocating service budgets",
+  "Evaluating provider candidates",
+  "Selecting best-value providers",
+  "Assembling procurement plan",
+  "Executing selected services",
+  "Measuring execution",
+];
+
+type RunMode = "simple" | "full";
+
 function RunTaskPage() {
   const [task, setTask] = useState(
     "Research today's AI market news and create a short competitive analysis.",
@@ -52,6 +82,7 @@ function RunTaskPage() {
   const [budget, setBudget] = useState("2.00");
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("Balanced");
   const [advanced, setAdvanced] = useState(false);
+  const [mode, setMode] = useState<RunMode>("full");
 
   // Advanced constraints
   const [minQuality, setMinQuality] = useState("");
@@ -62,9 +93,12 @@ function RunTaskPage() {
 
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState<ProcurementResult | null>(null);
+  const [planResult, setPlanResult] = useState<PlanningResult | null>(null);
+  const [execResult, setExecResult] = useState<ExecutionResult | null>(null);
 
-  const running = step >= 0 && step < STEPS.length;
-  const finished = step >= STEPS.length;
+  const activeSteps = mode === "full" ? PLANNING_STEPS : SIMPLE_STEPS;
+  const running = step >= 0 && step < activeSteps.length;
+  const finished = step >= activeSteps.length;
 
   useEffect(() => {
     if (step < 0 || finished) return;
@@ -76,27 +110,56 @@ function RunTaskPage() {
   const handleStartProcurement = () => {
     const parsedBudget = parseFloat(budget) || 0;
     const mappedPriority = priority.toLowerCase().replace(" ", "-") as ProcurementPriority;
-
-    const request: ProcurementRequest = {
-      task,
-      budget: parsedBudget,
-      priority: mappedPriority,
-      constraints: {
-        minimumQuality: minQuality ? parseFloat(minQuality) : undefined,
-        minimumReliability: minReliability ? parseFloat(minReliability) : undefined,
-        maximumProviderPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-        preferredProviders: preferredProviders ? preferredProviders.split(",").map((s) => s.trim()) : undefined,
-        excludedProviders: excludedProviders ? excludedProviders.split(",").map((s) => s.trim()) : undefined,
-      },
+    const constraints = {
+      minimumQuality: minQuality ? parseFloat(minQuality) : undefined,
+      minimumReliability: minReliability ? parseFloat(minReliability) : undefined,
+      maximumProviderPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+      preferredProviders: preferredProviders
+        ? preferredProviders.split(",").map((s) => s.trim())
+        : undefined,
+      excludedProviders: excludedProviders
+        ? excludedProviders.split(",").map((s) => s.trim())
+        : undefined,
     };
 
-    const res = evaluateProcurement(request, demoProviders);
-    setResult(res);
+    if (mode === "full") {
+      const pr = planTask(
+        {
+          task,
+          totalBudget: parsedBudget,
+          priority: mappedPriority,
+          constraints,
+        },
+        planningProviders,
+      );
+      setPlanResult(pr);
+      setResult(null);
+      setExecResult(null);
+      // Execute the plan immediately (synchronous in M3; async in future)
+      if (pr.status === "SUCCESS" && pr.plan) {
+        setExecResult(executePlan(pr.plan));
+      }
+    } else {
+      const request: ProcurementRequest = {
+        task,
+        budget: parsedBudget,
+        priority: mappedPriority,
+        constraints,
+      };
+      const res = evaluateProcurement(request, demoProviders);
+      setResult(res);
+      setPlanResult(null);
+    }
+
     setStep(0);
   };
 
+  // Simple mode helpers
   const winner = result?.selectedProvider;
   const isSuccess = result?.status === "SUCCESS" && winner !== null;
+
+  // Full planning mode helpers
+  const planSuccess = planResult?.status === "SUCCESS" && planResult.plan !== null;
 
   return (
     <>
@@ -114,6 +177,27 @@ function RunTaskPage() {
       <div className="mx-auto grid w-full max-w-[1200px] gap-5 px-5 py-10 md:px-8 lg:grid-cols-[0.9fr_1.1fr]">
         {/* Left column: Input Form */}
         <div className="surface rounded-xl p-5 md:p-6">
+          {/* Mode toggle */}
+          <div className="mb-5 flex items-center gap-2">
+            <span className="eyebrow text-smoke">Mode</span>
+            {(["full", "simple"] as RunMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                id={`mode-${m}-btn`}
+                onClick={() => setMode(m)}
+                className={cn(
+                  "rounded border px-2.5 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime",
+                  mode === m
+                    ? "border-lime/40 bg-lime/10 text-lime font-medium"
+                    : "border-border text-ash hover:border-smoke hover:text-mist",
+                )}
+              >
+                {m === "full" ? "Full Planning" : "Simple"}
+              </button>
+            ))}
+          </div>
+
           <label htmlFor="task-description-input" className="eyebrow block">
             Task Description
           </label>
@@ -245,29 +329,46 @@ function RunTaskPage() {
           ) : null}
 
           <div className="mt-6">
-            <Btn onClick={handleStartProcurement} disabled={running} className="w-full sm:w-auto">
-              {running ? "Procuring…" : "Start Procurement"} <ArrowRight size={14} />
+            <Btn
+              onClick={handleStartProcurement}
+              disabled={running}
+              className="w-full sm:w-auto"
+            >
+              {running
+                ? mode === "full"
+                  ? "Planning…"
+                  : "Procuring…"
+                : mode === "full"
+                  ? "Plan & Procure"
+                  : "Start Procurement"}{" "}
+              <ArrowRight size={14} />
             </Btn>
           </div>
         </div>
 
-        {/* Right column: Execution Timeline & Live Ranking */}
+        {/* Right column: Execution Timeline */}
         <div className="surface rounded-xl p-5 md:p-6">
           <div className="flex items-center gap-2">
             <LiveDot />
             <h2 className="text-[16px] text-paper">
               {finished
-                ? isSuccess
-                  ? "Procurement complete"
-                  : "Procurement halted"
+                ? mode === "full"
+                  ? planSuccess
+                    ? "Plan assembled"
+                    : "Planning halted"
+                  : isSuccess
+                    ? "Procurement complete"
+                    : "Procurement halted"
                 : running
-                  ? "MeterMind engine evaluating…"
+                  ? mode === "full"
+                    ? "MeterMind planning…"
+                    : "MeterMind engine evaluating…"
                   : "Ready"}
             </h2>
           </div>
 
           <ul className="mt-4 space-y-2">
-            {STEPS.map((s, i) => {
+            {activeSteps.map((s, i) => {
               const state = step > i ? "done" : step === i ? "active" : "todo";
               return (
                 <li
@@ -297,8 +398,8 @@ function RunTaskPage() {
             })}
           </ul>
 
-          {/* Engine Provider Ranking Table */}
-          {step >= 4 && result ? (
+          {/* ── Simple mode: provider ranking table ── */}
+          {mode === "simple" && step >= 4 && result ? (
             <div className="mt-6">
               {isSuccess && winner ? (
                 <>
@@ -381,7 +482,6 @@ function RunTaskPage() {
                   </div>
                 </>
               ) : (
-                /* Actionable Error State */
                 <div className="rounded-lg border border-blocked/40 bg-blocked/[0.06] p-4">
                   <div className="flex items-center gap-2 text-blocked">
                     <AlertTriangle size={16} />
@@ -408,91 +508,425 @@ function RunTaskPage() {
             </div>
           ) : null}
 
-          {step >= 5 && isSuccess ? (
+          {/* ── Simple mode: payment log ── */}
+          {mode === "simple" && step >= 5 && isSuccess ? (
             <ul className="mono-num mt-4 space-y-1 rounded-lg border border-border bg-void px-3 py-3 text-[12px] text-fog">
               <li>→ Preparing purchase authorization…</li>
               <li>→ Executing simulated transaction of ${winner?.price.toFixed(3) ?? "0.000"} via x402 rail…</li>
               <li>→ Payment confirmed ✓</li>
               <li>→ Service execution verified ✓</li>
-              <li>→ Complete · estimated savings ${result.estimatedSavings.toFixed(3)}</li>
+              <li>→ Complete · estimated savings ${result?.estimatedSavings.toFixed(3)}</li>
             </ul>
+          ) : null}
+
+          {/* ── Full planning mode: plan summary card (after completion) ── */}
+          {mode === "full" && finished && planResult ? (
+            <div className="mt-6">
+              {planSuccess && planResult.plan ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-lime/30 bg-lime/[0.06] p-4">
+                    <div className="flex items-center gap-2">
+                      <Layers size={13} className="text-lime" />
+                      <Eyebrow className="text-lime/80">Plan Assembled</Eyebrow>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border/60 bg-border/30">
+                      {[
+                        ["Intent", planResult.plan.intent.category.replace(/_/g, " ")],
+                        ["Services", String(planResult.plan.serviceRequirements.length)],
+                        ["Est. Cost", currency(planResult.plan.estimatedTotalCost, 3)],
+                      ].map(([k, v]) => (
+                        <div key={k} className="bg-carbon/60 px-2.5 py-2">
+                          <div className="eyebrow text-smoke">{k}</div>
+                          <div className="mono-num mt-0.5 text-[13px] text-paper">{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {execResult && (
+                    <div className={cn(
+                      "rounded-lg border p-3",
+                      execResult.status === "SUCCESS"
+                        ? "border-lime/30 bg-lime/[0.05]"
+                        : "border-blocked/30 bg-blocked/[0.05]"
+                    )}>
+                      <div className="flex items-center gap-1.5">
+                        <Zap size={12} className={execResult.status === "SUCCESS" ? "text-lime" : "text-blocked"} />
+                        <Eyebrow className={execResult.status === "SUCCESS" ? "text-lime/80" : "text-blocked/80"}>
+                          {execResult.status === "SUCCESS" ? "Execution Complete" : "Execution Failed"}
+                        </Eyebrow>
+                        <span className="ml-auto rounded border border-lime/30 bg-lime/10 px-1.5 py-0.5 font-mono text-[9px] tracking-widest text-lime uppercase">
+                          DEMO
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-3 text-[11px] text-smoke">
+                        <span className="flex items-center gap-1">
+                          <Clock size={10} />
+                          {execResult.totalMeasuredLatencyMs}ms
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <DollarSign size={10} />
+                          {currency(execResult.totalDeclaredCost, 3)} cost
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-blocked/40 bg-blocked/[0.06] p-4">
+                  <div className="flex items-center gap-2 text-blocked">
+                    <AlertTriangle size={16} />
+                    <span className="font-mono text-[11px] tracking-[0.12em] uppercase">
+                      {planResult.status}
+                    </span>
+                  </div>
+                  <h3 className="mt-2 text-[15px] font-medium text-paper">Planning Unsuccessful</h3>
+                  <p className="mt-2 text-[13px] leading-relaxed text-mist">{planResult.errorMessage}</p>
+                  {planResult.failedService ? (
+                    <p className="mt-1 text-[12px] text-ash">
+                      Failed at service: <strong className="text-mist">{planResult.failedService}</strong>
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
           ) : null}
         </div>
       </div>
 
-      {/* Finished Output & Summary */}
+      {/* ── Finished Output & Summary ── */}
       {finished ? (
-        <div className="mx-auto grid w-full max-w-[1200px] gap-5 px-5 pb-20 md:px-8 lg:grid-cols-[1.2fr_0.8fr]">
-          {isSuccess && winner ? (
-            <>
-              <div className="surface rounded-xl p-5 md:p-6">
-                <div className="mb-4 inline-flex items-center gap-1.5 rounded border border-lime/35 bg-lime/10 px-2.5 py-1 text-[11px] font-mono tracking-[0.1em] text-lime">
-                  <Check size={12} strokeWidth={2.5} /> TASK COMPLETE
+        <div className="mx-auto w-full max-w-[1200px] gap-5 px-5 pb-20 md:px-8">
+          {/* ── Full planning mode result ── */}
+          {mode === "full" && planResult ? (
+            planSuccess && planResult.plan ? (
+              <div className="space-y-5">
+                {/* Plan table */}
+                <div className="surface rounded-xl p-5 md:p-6">
+                  <div className="mb-4 inline-flex items-center gap-1.5 rounded border border-lime/35 bg-lime/10 px-2.5 py-1 text-[11px] font-mono tracking-[0.1em] text-lime">
+                    <Check size={12} strokeWidth={2.5} /> {execResult?.status === "SUCCESS" ? "TASK COMPLETE" : "PLAN COMPLETE"}
+                  </div>
+                  <Eyebrow>Procurement Plan</Eyebrow>
+                  <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full min-w-[680px] border-collapse text-left">
+                      <thead>
+                        <tr className="border-b border-border bg-obsidian/60">
+                          {[
+                            "Service",
+                            "Selected Provider",
+                            "Allocated Budget",
+                            "Expected Cost",
+                            "Why Selected",
+                          ].map((h, hi) => (
+                            <th
+                              key={h}
+                              className={cn(
+                                "eyebrow px-3 py-2.5 font-normal",
+                                hi >= 2 && hi <= 3 && "text-right",
+                              )}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {planResult.plan.serviceResults.map((sr) => {
+                          const selectedProvider = sr.procurementResult.selectedProvider;
+                          const firstReason = sr.procurementResult.decisionReasons[0] ?? "—";
+                          const label =
+                            SERVICE_LABELS[sr.service as keyof typeof SERVICE_LABELS] ?? sr.service;
+                          return (
+                            <tr
+                              key={sr.service}
+                              className="border-b border-border/60 transition-colors last:border-0"
+                            >
+                              <td className="px-3 py-3 text-[13px] font-medium text-paper">
+                                {label}
+                              </td>
+                              <td className="px-3 py-3 text-[13px] text-lime font-medium">
+                                {selectedProvider?.name ?? "—"}
+                              </td>
+                              <td className="mono-num px-3 py-3 text-right text-[13px] text-mist">
+                                {currency(sr.allocatedBudget, 3)}
+                              </td>
+                              <td className="mono-num px-3 py-3 text-right text-[13px] text-lime font-medium">
+                                {currency(sr.procurementResult.selectedCost, 3)}
+                              </td>
+                              <td className="px-3 py-3 text-[12px] leading-relaxed text-ash max-w-[260px]">
+                                {firstReason}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-border bg-obsidian/40">
+                          <td className="eyebrow px-3 py-2.5 text-smoke">Total</td>
+                          <td />
+                          <td className="mono-num px-3 py-2.5 text-right text-[13px] text-mist">
+                            {currency(planResult.plan.totalAllocatedBudget, 3)}
+                          </td>
+                          <td className="mono-num px-3 py-2.5 text-right text-[13px] text-lime font-medium">
+                            {currency(planResult.plan.estimatedTotalCost, 3)}
+                          </td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
-                <Eyebrow>Task Output</Eyebrow>
-                <h3 className="mt-2 text-[18px] text-paper">AI market brief — competitive analysis</h3>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-ash">
-                  Three funding events and two model launches were recorded in the last 24 hours.
-                  Inference pricing fell 6% across mid-tier providers, while agent-tooling startups
-                  captured the majority of announced capital. Competitive pressure is concentrating on
-                  latency and per-token price rather than raw benchmark scores.
+
+                {/* Plan rationale + intent */}
+                <div className="surface rounded-xl p-5 md:p-6">
+                  <Eyebrow>Plan Rationale</Eyebrow>
+                  <p className="mt-3 text-[13.5px] leading-relaxed text-ash">
+                    {planResult.plan.planRationale}
+                  </p>
+
+                  <div className="mt-4 grid gap-px overflow-hidden rounded-lg border border-border sm:grid-cols-2">
+                    {[
+                      [
+                        "Detected intent",
+                        planResult.plan.intent.category.replace(/_/g, " "),
+                      ],
+                      [
+                        "Matched keywords",
+                        planResult.plan.intent.matchedKeywords.slice(0, 4).join(", ") || "—",
+                      ],
+                      [
+                        "Estimated savings",
+                        currency(planResult.plan.estimatedTotalSavings, 3),
+                      ],
+                      [
+                        "Confidence",
+                        planResult.plan.intent.confidence,
+                      ],
+                    ].map(([k, v]) => (
+                      <div key={k} className="bg-carbon px-3 py-2.5">
+                        <dt className="eyebrow text-smoke">{k}</dt>
+                        <dd className="mono-num mt-1 text-[13px] text-mist">{v}</dd>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Per-service execution order */}
+                  <div className="mt-4">
+                    <Eyebrow className="mb-2">Execution Order</Eyebrow>
+                    <ol className="space-y-1">
+                      {[...planResult.plan.serviceRequirements]
+                        .sort((a, b) => a.executionOrder - b.executionOrder)
+                        .map((req, i) => (
+                          <li
+                            key={`${req.service}-${i}`}
+                            className="flex items-start gap-2 text-[13px] text-mist"
+                          >
+                            <span className="mono-num shrink-0 text-lime">
+                              {req.executionOrder}.
+                            </span>
+                            <span>
+                              <strong>
+                                {SERVICE_LABELS[req.service as keyof typeof SERVICE_LABELS] ??
+                                  req.service}
+                              </strong>
+                              {req.canParallelize ? (
+                                <span className="ml-1.5 text-[11px] text-smoke">(parallel)</span>
+                              ) : null}
+                              {" — "}
+                              <span className="text-ash">{req.rationale}</span>
+                            </span>
+                          </li>
+                        ))}
+                    </ol>
+                  </div>
+                  {/* ── Execution results panel ── */}
+                  {execResult && execResult.serviceExecutions.length > 0 && (
+                    <div className="surface mt-5 rounded-xl p-5 md:p-6">
+                      <div className="mb-4 flex items-center gap-2">
+                        <Zap size={14} className={execResult.status === "SUCCESS" ? "text-lime" : "text-blocked"} />
+                        <Eyebrow>{execResult.status === "SUCCESS" ? "Execution Results" : "Execution Failed"}</Eyebrow>
+                        <span className="ml-auto rounded border border-lime/30 bg-lime/10 px-2 py-0.5 font-mono text-[10px] tracking-[0.1em] text-lime uppercase">
+                          DEMO EXECUTION
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {execResult.serviceExecutions.map((ex, i) => (
+                          <div
+                            key={`${ex.service}-${i}`}
+                            className={cn(
+                              "rounded-lg border p-3.5",
+                              ex.status === "SUCCESS"
+                                ? "border-border bg-carbon/40"
+                                : "border-blocked/30 bg-blocked/[0.04]"
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                {ex.status === "SUCCESS" ? (
+                                  <Check size={12} className="text-lime shrink-0" />
+                                ) : (
+                                  <XCircle size={12} className="text-blocked shrink-0" />
+                                )}
+                                <span className="text-[13px] font-medium text-paper">
+                                  {SERVICE_LABELS[ex.service as keyof typeof SERVICE_LABELS] ?? ex.service}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-smoke">
+                                <span className="mono-num">{ex.measuredLatencyMs}ms</span>
+                                <span className="mono-num text-ash">{currency(ex.declaredCost, 3)}</span>
+                                <span className="rounded border border-lime/25 bg-lime/[0.07] px-1.5 py-0.5 font-mono text-[9px] tracking-widest text-lime uppercase">
+                                  DEMO
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-1 flex items-center gap-3 text-[11px] text-smoke">
+                              <span>Provider: <strong className="text-mist">{ex.providerName}</strong></span>
+                              <span>Budget: <span className="mono-num text-mist">{currency(ex.allocatedBudget, 3)}</span></span>
+                            </div>
+                            {ex.payload && ex.status === "SUCCESS" && (
+                              <details className="mt-2.5">
+                                <summary className="cursor-pointer text-[11px] text-smoke hover:text-mist transition-colors">
+                                  View demo output
+                                </summary>
+                                <pre className="mono-num mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-void/80 p-2.5 text-[11px] leading-relaxed text-fog">
+                                  {ex.payload}
+                                </pre>
+                              </details>
+                            )}
+                            {ex.errorMessage && (
+                              <p className="mt-1.5 text-[11px] text-blocked">{ex.errorMessage}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Audit summary row */}
+                      <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-border/50 pt-3 text-[12px] text-smoke">
+                        <span>
+                          Total latency:{" "}
+                          <strong className="text-mist">{execResult.totalMeasuredLatencyMs}ms</strong>
+                        </span>
+                        <span>
+                          Total cost:{" "}
+                          <strong className="mono-num text-lime">{currency(execResult.totalDeclaredCost, 3)}</strong>
+                        </span>
+                        <span>
+                          Allocated:{" "}
+                          <strong className="mono-num text-mist">{currency(execResult.totalAllocatedBudget, 3)}</strong>
+                        </span>
+                        <span className="ml-auto rounded border border-lime/30 bg-lime/[0.07] px-2 py-0.5 font-mono text-[9px] tracking-widest text-lime uppercase">
+                          mode: demo — not live api calls
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Final task output */}
+                  {execResult?.status === "SUCCESS" && execResult.finalResult && (
+                    <div className="surface mt-5 rounded-xl p-5 md:p-6">
+                      <Eyebrow>Final Task Output</Eyebrow>
+                      <p className="mt-1 text-[12px] text-smoke">
+                        Result from the last completed stage
+                      </p>
+                      <pre className="mono-num mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-void p-3.5 text-[12px] leading-relaxed text-fog">
+                        {execResult.finalResult}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="surface rounded-xl border-blocked/40 p-6">
+                <div className="flex items-center gap-2 text-blocked">
+                  <XCircle size={18} />
+                  <h3 className="text-[16px] font-medium text-paper">Planning Failed</h3>
+                </div>
+                <p className="mt-2 text-[14px] text-mist">{planResult.errorMessage}</p>
+                <p className="mt-3 text-[13px] text-ash">
+                  {planResult.status === "UNSUPPORTED_TASK"
+                    ? "Try rephrasing your task. Supported types: research & summarize, web search, translate, market data, code review, image analysis, content extraction."
+                    : planResult.status === "BUDGET_TOO_LOW"
+                      ? "Try increasing your maximum budget to allow meaningful per-service allocation."
+                      : "Try a different task description or adjust your constraints."}
                 </p>
               </div>
+            )
+          ) : null}
 
-              <div className="surface rounded-xl p-5 md:p-6">
-                <Eyebrow>Procurement summary</Eyebrow>
-                <dl className="mt-3 divide-y divide-border/70 rounded-lg border border-border">
-                  {[
-                    ["Provider selected", winner.name],
-                    ["Amount paid", currency(result.selectedCost, 3)],
-                    [
-                      `Estimated comparable baseline (${result.comparisonProvider || "baseline"})`,
-                      currency(result.estimatedComparableCost, 3),
-                    ],
-                    ["Estimated savings", currency(result.estimatedSavings, 3)],
-                    ["Quality score", `${winner.quality}/100`],
-                    ["Reliability score", `${winner.reliability}%`],
-                    ["Latency", `${winner.latency}ms`],
-                    ["Transaction status", "Simulated ✓"],
-                  ].map(([k, v]) => (
-                    <div key={k} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5">
-                      <dt className="min-w-0 truncate text-[13px] text-ash">{k}</dt>
-                      <dd
-                        className={cn(
-                          "mono-num text-[13px]",
-                          k === "Estimated savings" ? "text-lime font-medium" : "text-mist",
-                        )}
-                      >
-                        {v}
-                      </dd>
+          {/* ── Simple mode result ── */}
+          {mode === "simple" ? (
+            <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+              {isSuccess && winner ? (
+                <>
+                  <div className="surface rounded-xl p-5 md:p-6">
+                    <div className="mb-4 inline-flex items-center gap-1.5 rounded border border-lime/35 bg-lime/10 px-2.5 py-1 text-[11px] font-mono tracking-[0.1em] text-lime">
+                      <Check size={12} strokeWidth={2.5} /> TASK COMPLETE
                     </div>
-                  ))}
-                </dl>
+                    <Eyebrow>Task Output</Eyebrow>
+                    <h3 className="mt-2 text-[18px] text-paper">AI market brief — competitive analysis</h3>
+                    <p className="mt-3 text-[13.5px] leading-relaxed text-ash">
+                      Three funding events and two model launches were recorded in the last 24 hours.
+                      Inference pricing fell 6% across mid-tier providers, while agent-tooling startups
+                      captured the majority of announced capital. Competitive pressure is concentrating on
+                      latency and per-token price rather than raw benchmark scores.
+                    </p>
+                  </div>
 
-                <div className="mt-4 rounded-lg border border-lime/20 bg-lime/[0.04] p-4">
-                  <Eyebrow className="text-lime/80">Why MeterMind chose this provider</Eyebrow>
-                  <ul className="mt-2 space-y-1.5 text-[13px] text-mist">
-                    {result.decisionReasons.map((r, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-lime">•</span> {r}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="surface rounded-xl p-5 md:p-6">
+                    <Eyebrow>Procurement summary</Eyebrow>
+                    <dl className="mt-3 divide-y divide-border/70 rounded-lg border border-border">
+                      {[
+                        ["Provider selected", winner.name],
+                        ["Amount paid", currency(result!.selectedCost, 3)],
+                        [
+                          `Estimated comparable baseline (${result!.comparisonProvider || "baseline"})`,
+                          currency(result!.estimatedComparableCost, 3),
+                        ],
+                        ["Estimated savings", currency(result!.estimatedSavings, 3)],
+                        ["Quality score", `${winner.quality}/100`],
+                        ["Reliability score", `${winner.reliability}%`],
+                        ["Latency", `${winner.latency}ms`],
+                        ["Transaction status", "Simulated ✓"],
+                      ].map(([k, v]) => (
+                        <div key={k} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5">
+                          <dt className="min-w-0 truncate text-[13px] text-ash">{k}</dt>
+                          <dd
+                            className={cn(
+                              "mono-num text-[13px]",
+                              k === "Estimated savings" ? "text-lime font-medium" : "text-mist",
+                            )}
+                          >
+                            {v}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    <div className="mt-4 rounded-lg border border-lime/20 bg-lime/[0.04] p-4">
+                      <Eyebrow className="text-lime/80">Why MeterMind chose this provider</Eyebrow>
+                      <ul className="mt-2 space-y-1.5 text-[13px] text-mist">
+                        {result!.decisionReasons.map((r, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-lime">•</span> {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="surface col-span-2 rounded-xl p-6 border-blocked/40">
+                  <div className="flex items-center gap-2 text-blocked">
+                    <XCircle size={18} />
+                    <h3 className="text-[16px] font-medium text-paper">No Procurement Executed</h3>
+                  </div>
+                  <p className="mt-2 text-[14px] text-mist">{result?.errorMessage}</p>
+                  <p className="mt-3 text-[13px] text-ash">
+                    Try increasing your maximum budget, adjusting priority rules, or relaxing quality and reliability constraints.
+                  </p>
                 </div>
-              </div>
-            </>
-          ) : (
-            <div className="surface col-span-2 rounded-xl p-6 border-blocked/40">
-              <div className="flex items-center gap-2 text-blocked">
-                <XCircle size={18} />
-                <h3 className="text-[16px] font-medium text-paper">No Procurement Executed</h3>
-              </div>
-              <p className="mt-2 text-[14px] text-mist">{result?.errorMessage}</p>
-              <p className="mt-3 text-[13px] text-ash">
-                Try increasing your maximum budget, adjusting priority rules, or relaxing quality and reliability constraints.
-              </p>
+              )}
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
     </>

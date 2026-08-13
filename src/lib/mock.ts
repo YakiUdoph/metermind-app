@@ -19,6 +19,13 @@ export interface Provider {
   assessment: string;
   priceHistory: number[];
   qualityHistory: number[];
+  /**
+   * Service capabilities for the planning domain.
+   * Uses string[] (not ServiceCategory) to avoid a circular import
+   * between mock.ts ↔ planning/types.ts.
+   * Populated only on planningProviders; undefined on providers/demoProviders.
+   */
+  capabilities?: readonly string[] | undefined;
 }
 
 export interface Procurement {
@@ -567,3 +574,33 @@ export const currency = (n: number, decimals = 2) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 
 export const providerById = (id: string) => providers.find((p) => p.id === id);
+
+/* -------------------------------------------------- planning providers */
+
+/**
+ * Full provider catalog with service capabilities annotated.
+ * Used exclusively by the planning domain (src/domain/planning/).
+ *
+ * Capabilities are keyed by provider id and map to the ServiceCategory
+ * string-union values defined in src/domain/planning/types.ts.
+ *
+ * Existing providers / demoProviders remain unchanged so all
+ * Milestone #1 scoring tests continue to pass without modification.
+ */
+const PROVIDER_CAPABILITIES: Record<string, readonly string[]> = {
+  dataflow:    ["web_search", "content_extraction", "summarization", "market_data"],
+  searchx:     ["web_search", "content_extraction", "market_data"],
+  quicksearch: ["web_search", "market_data"],
+  researchapi: ["web_search", "content_extraction", "summarization", "market_data"],
+  insightai:   ["web_search", "summarization", "market_data"],
+  voiceflow:   [],
+  codemodel:   ["code_analysis"],
+  linguaapi:   ["translation"],
+  visionapi:   ["image_analysis"],
+};
+
+export const planningProviders: Provider[] = providers.map((p) => ({
+  ...p,
+  capabilities: PROVIDER_CAPABILITIES[p.id] ?? [],
+}));
+
