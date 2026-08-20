@@ -4,10 +4,10 @@
  * Run with: npx tsx --test src/domain/execution/coingecko.test.ts
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { CoinGeckoAdapter } from "../../server/providers/coingecko";
+import { CoinGeckoAdapter as OriginalCoinGeckoAdapter } from "../../server/providers/coingecko";
 import { executePlan } from "./executor";
 import { AdapterRegistry, createDefaultRegistry } from "./registry";
 import { planTask } from "../planning/planner";
@@ -19,21 +19,20 @@ import type { EvaluatedProvider } from "@/domain/procurement/types";
 // Mock Helpers
 // ---------------------------------------------------------------------------
 
-const originalFetch = globalThis.fetch;
 let mockFetchHandler: ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) | null = null;
 
-before(() => {
-  globalThis.fetch = async (input, init) => {
-    if (mockFetchHandler) {
-      return mockFetchHandler(input, init);
-    }
-    return new Response(JSON.stringify({}), { status: 404 });
-  };
-});
+const localFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  if (mockFetchHandler) {
+    return mockFetchHandler(input, init);
+  }
+  return new Response(JSON.stringify({}), { status: 404 });
+};
 
-after(() => {
-  globalThis.fetch = originalFetch;
-});
+class CoinGeckoAdapter extends OriginalCoinGeckoAdapter {
+  constructor(apiKey: string | undefined) {
+    super(apiKey, localFetch);
+  }
+}
 
 function createMockResponse(body: any, status = 200, statusText = "OK"): Response {
   return new Response(JSON.stringify(body), {

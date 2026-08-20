@@ -1,7 +1,7 @@
 /**
  * MeterMind x402 Paid Execution & Payment Audit Layer — Test Suite
  *
- * 23 deterministic tests covering all specified requirements.
+ * Deterministic tests covering all specified requirements.
  * Run with: npx tsx --test src/domain/payment/payment.test.ts
  */
 
@@ -11,15 +11,23 @@ import assert from "node:assert/strict";
 import { verifyPaymentPolicy } from "./policy";
 import type { PolicyParams } from "./policy";
 import { createPaymentAudit } from "./audit";
-import { executeX402Request } from "../../server/payment/x402-client";
-import { getWalletConfig } from "../../server/payment/wallet";
+import { executeX402Request } from "../../server/payment/simulated-x402-client";
+import { getWalletConfig, signPaymentChallenge } from "../../server/payment/wallet";
 import { executePlan } from "../execution/executor";
 import { AdapterRegistry } from "../execution/registry";
-import { PaidResearchAdapter } from "../../server/providers/paid-research";
+import { PaidResearchAdapter } from "../../server/providers/paid-research-live";
+import { SimulatedPaidResearchAdapter } from "../../server/providers/simulated-paid-research";
+import { DemoProviderAdapter } from "../execution/adapters/demo";
 import { PAID_RESEARCH_PROVIDER_ENTRY, COINGECKO_PROVIDER_ENTRY, BITFINEX_PROVIDER_ENTRY } from "../../lib/mock";
 import type { ProcurementPlan } from "../planning/types";
 import type { ServiceExecutionRequest } from "../execution/types";
 import type { PaymentRequest } from "./types";
+import { HttpMerchantGatewayAdapter, EvmPayerWalletAdapter } from "@goatnetwork/agentkit";
+import { JsonRpcProvider } from "ethers";
+import { Wallet } from "ethers";
+import { hashBuyContract } from "./contract";
+import type { BuyContract } from "./contract";
+import { makeTestPrivateKey } from "./test-credentials";
 
 describe("MeterMind Payment & x402 Policy Audit Suite", () => {
 
@@ -85,9 +93,9 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
       provider: {
         id: "paidresearchapi",
         name: "PaidResearchAPI",
-        mode: "live",
+        mode: "demo",
         paymentModel: "x402",
-        paymentDestination: "0x789C402PaidResearchMerchantAddress0000",
+        paymentDestination: "sim_merchant_paidresearchapi",
       },
       alreadyPaidKeys: new Set<string>(),
       maxTransactionAmount: 0.05,
@@ -122,9 +130,9 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
       provider: {
         id: "paidresearchapi",
         name: "PaidResearchAPI",
-        mode: "live",
+        mode: "demo",
         paymentModel: "x402",
-        paymentDestination: "0x789C402PaidResearchMerchantAddress0000",
+        paymentDestination: "sim_merchant_paidresearchapi",
       },
       alreadyPaidKeys: new Set<string>(),
       maxTransactionAmount: 0.05,
@@ -283,6 +291,14 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
     const result = verifyPaymentPolicy(request, params);
     assert.equal(result.approved, false);
     assert.match(result.errorMessageSafe || "", /already been paid/i);
+
+    const unavailableStore = verifyPaymentPolicy(request, {
+      ...params,
+      alreadyPaidKeys: new Set<string>(),
+      idempotencyStoreReady: false,
+    });
+    assert.equal(unavailableStore.approved, false);
+    assert.equal(unavailableStore.errorCode, "PAYMENT_IDEMPOTENCY_NOT_READY");
   });
 
   it("8. verifyPaymentPolicy allows same idempotency key for failed prior attempts", () => {
@@ -498,7 +514,7 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
   // ---------------------------------------------------------------------------
 
   it("12. executeX402Request challenge loop mock completes successfully", async () => {
-    const { handlePaidResearchRequest } = await import("../../server/providers/paid-research");
+    const { handlePaidResearchRequest } = await import("../../server/providers/simulated-paid-research");
     const mockFetchHandler = async (url: string, init?: RequestInit): Promise<Response> => {
       if (url.includes("network-error-endpoint")) {
         throw new Error("Network connection failed");
@@ -565,9 +581,9 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
       provider: {
         id: "paidresearchapi",
         name: "PaidResearchAPI",
-        mode: "live",
+        mode: "demo",
         paymentModel: "x402",
-        paymentDestination: "0x789C402PaidResearchMerchantAddress0000",
+        paymentDestination: "sim_merchant_paidresearchapi",
       },
       policyParams: {
         maxTransactionAmount: 0.05,
@@ -580,13 +596,13 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
 
     assert.equal(result.status, "SUCCESS");
     assert.equal(result.paymentResult!.settlementStatus, "SETTLED");
-    assert.ok(result.paymentResult!.transactionHash!.startsWith("0x"));
+    assert.ok(result.paymentResult!.transactionHash!.startsWith("sim_tx_"));
 
     process.env["PAYMENT_MODE"] = prevMode;
   });
 
   it("13. executeX402Request returns payment details on success", async () => {
-    const { handlePaidResearchRequest } = await import("../../server/providers/paid-research");
+    const { handlePaidResearchRequest } = await import("../../server/providers/simulated-paid-research");
     const mockFetchHandler = async (url: string, init?: RequestInit): Promise<Response> => {
       const mockReq = {
         method: init?.method || "POST",
@@ -617,9 +633,9 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
       provider: {
         id: "paidresearchapi",
         name: "PaidResearchAPI",
-        mode: "live",
+        mode: "demo",
         paymentModel: "x402",
-        paymentDestination: "0x789C402PaidResearchMerchantAddress0000",
+        paymentDestination: "sim_merchant_paidresearchapi",
       },
       policyParams: {
         maxTransactionAmount: 0.05,
@@ -638,7 +654,7 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
   });
 
   it("14. executeX402Request handles simulated payment mode correctly", async () => {
-    const { handlePaidResearchRequest } = await import("../../server/providers/paid-research");
+    const { handlePaidResearchRequest } = await import("../../server/providers/simulated-paid-research");
     const mockFetchHandler = async (url: string, init?: RequestInit): Promise<Response> => {
       const mockReq = {
         method: init?.method || "POST",
@@ -669,9 +685,9 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
       provider: {
         id: "paidresearchapi",
         name: "PaidResearchAPI",
-        mode: "live",
+        mode: "demo",
         paymentModel: "x402",
-        paymentDestination: "0x789C402PaidResearchMerchantAddress0000",
+        paymentDestination: "sim_merchant_paidresearchapi",
       },
       policyParams: {
         maxTransactionAmount: 0.05,
@@ -683,7 +699,13 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
     });
 
     assert.equal(result.paymentResult!.settlementStatus, "SETTLED");
-    assert.match(result.paymentResult!.transactionHash || "", /^0x_sim_tx_[0-9a-f]+$/);
+    assert.match(result.paymentResult!.transactionHash || "", /^sim_tx_[0-9a-f]+$/);
+
+    process.env["PAYMENT_MODE"] = "live";
+    assert.throws(
+      () => signPaymentChallenge({ price: 0.01, asset: "USDC", network: "GOAT-Testnet", paymentDestination: "receiver", idempotencyKey: "live-must-use-agentkit" }),
+      /LIVE_SIGNING_REQUIRES_AGENTKIT/,
+    );
 
     process.env["PAYMENT_MODE"] = prevMode;
   });
@@ -872,7 +894,7 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
     };
 
     const reg = new AdapterRegistry();
-    reg.register(new PaidResearchAdapter());
+    reg.register(new SimulatedPaidResearchAdapter());
 
     const result = await executePlan(plan, reg);
 
@@ -928,7 +950,7 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
     };
 
     const reg = new AdapterRegistry();
-    reg.register(new PaidResearchAdapter());
+    reg.register(new SimulatedPaidResearchAdapter());
 
     const result = await executePlan(plan, reg);
 
@@ -1043,7 +1065,7 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
     };
 
     const reg = new AdapterRegistry();
-    reg.register(new PaidResearchAdapter());
+    reg.register(new SimulatedPaidResearchAdapter());
 
     const result = await executePlan(plan, reg);
 
@@ -1103,7 +1125,6 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
 
     const reg = new AdapterRegistry();
     // Register demo/free adapters
-    const { DemoProviderAdapter } = require("../execution/adapters/demo");
     reg.register(new DemoProviderAdapter("bitfinex", "Bitfinex", ["market_data"]));
 
     const result = await executePlan(plan, reg);
@@ -1121,6 +1142,601 @@ describe("MeterMind Payment & x402 Policy Audit Suite", () => {
     assert.ok(!BITFINEX_PROVIDER_ENTRY.paymentModel);
     assert.ok((COINGECKO_PROVIDER_ENTRY.capabilities as string[]).includes("market_data"));
     assert.ok((BITFINEX_PROVIDER_ENTRY.capabilities as string[]).includes("market_data"));
+  });
+
+  // ---------------------------------------------------------------------------
+  // 24+: New Official GOAT Payment Stack integration tests
+  // ---------------------------------------------------------------------------
+
+  describe("Official GOAT Payment Flow live-ready verification", () => {
+    const livePrivateKey = makeTestPrivateKey("payment-flow");
+    const liveReceiver = "0x2222222222222222222222222222222222222222";
+    const liveToken = "0x3022b87ac063DE95b1570F46f5e470F8B53112D8";
+
+    function createTestBuyContract(idempotencyKey: string): BuyContract {
+      const base: Omit<BuyContract, "contractHash"> = {
+        contractId: `contract-${idempotencyKey}`,
+        requirementHash: "test-requirement",
+        service: "paid_research",
+        providerId: "paidresearchapi",
+        providerEndpoint: "http://real-merchant.internal/v1/deliver",
+        quoteId: `quote-${idempotencyKey}`,
+        quoteTimestamp: "2026-08-20T00:00:00.000Z",
+        maximumAuthorizedAmount: 0.05,
+        actualQuotedAmount: 0.01,
+        currency: "USDC",
+        network: "GOAT-Testnet",
+        recipient: liveReceiver,
+        idempotencyKey,
+        createdAt: "2026-08-20T00:00:00.000Z",
+        decisionEvidenceHash: "test-decision",
+        tokenContractAddress: liveToken,
+        chainId: 48816,
+        payerAddress: new Wallet(livePrivateKey).address,
+      };
+      return { ...base, contractHash: hashBuyContract(base) };
+    }
+    
+    // Mocks helper for setup and teardown
+    function setupGoatMocks(options?: {
+      chainId?: number;
+      createPaymentIntent?: typeof HttpMerchantGatewayAdapter.prototype.createPaymentIntent;
+      signCalldataTypedData?: typeof EvmPayerWalletAdapter.prototype.signCalldataTypedData;
+      submitPaymentAuthorization?: typeof HttpMerchantGatewayAdapter.prototype.submitPaymentAuthorization;
+      transferToken?: typeof EvmPayerWalletAdapter.prototype.transferToken;
+      getPaymentStatus?: typeof HttpMerchantGatewayAdapter.prototype.getPaymentStatus;
+      fetchHandler?: typeof global.fetch;
+    }) {
+      const originalCreate = HttpMerchantGatewayAdapter.prototype.createPaymentIntent;
+      const originalSign = EvmPayerWalletAdapter.prototype.signCalldataTypedData;
+      const originalSubmit = HttpMerchantGatewayAdapter.prototype.submitPaymentAuthorization;
+      const originalTransfer = EvmPayerWalletAdapter.prototype.transferToken;
+      const originalStatus = HttpMerchantGatewayAdapter.prototype.getPaymentStatus;
+      const originalGetNetwork = JsonRpcProvider.prototype.getNetwork;
+      const originalFetch = global.fetch;
+      const previousReceiver = process.env["GOAT_MERCHANT_RECEIVER"];
+      const previousIdempotencyReady = process.env["GOAT_DURABLE_IDEMPOTENCY_READY"];
+      process.env["GOAT_MERCHANT_RECEIVER"] = liveReceiver;
+      process.env["GOAT_DURABLE_IDEMPOTENCY_READY"] = "true";
+
+      HttpMerchantGatewayAdapter.prototype.createPaymentIntent = options?.createPaymentIntent || (async () => ({
+        paymentId: "mock-payment-id",
+        status: 'created',
+        payToAddress: liveReceiver,
+        tokenAddress: liveToken,
+        tokenDecimals: 6,
+        calldataSignRequest: { domain: {}, types: {}, message: {} },
+        raw: {}
+      }) as any);
+
+      EvmPayerWalletAdapter.prototype.signCalldataTypedData = options?.signCalldataTypedData || (async () => "0xmocksignature");
+
+      HttpMerchantGatewayAdapter.prototype.submitPaymentAuthorization = options?.submitPaymentAuthorization || (async () => ({
+        paymentId: "mock-payment-id",
+        status: 'authorized',
+        raw: {}
+      }));
+
+      EvmPayerWalletAdapter.prototype.transferToken = options?.transferToken || (async () => ({
+        txHash: "0xmocktransfertxhash"
+      }));
+
+      HttpMerchantGatewayAdapter.prototype.getPaymentStatus = options?.getPaymentStatus || (async () => ({
+        paymentId: "mock-payment-id",
+        status: 'settled',
+        raw: {}
+      }) as any);
+
+      JsonRpcProvider.prototype.getNetwork = async function() {
+        return { chainId: BigInt(options?.chainId ?? 48816), name: "GOAT-Testnet" } as any;
+      };
+
+      global.fetch = options?.fetchHandler || (async () => new Response(JSON.stringify({ payload: "=== PAID PREMIUM RESEARCH REPORT ===\n" }), { status: 200 }));
+
+      return () => {
+        HttpMerchantGatewayAdapter.prototype.createPaymentIntent = originalCreate;
+        EvmPayerWalletAdapter.prototype.signCalldataTypedData = originalSign;
+        HttpMerchantGatewayAdapter.prototype.submitPaymentAuthorization = originalSubmit;
+        EvmPayerWalletAdapter.prototype.transferToken = originalTransfer;
+        HttpMerchantGatewayAdapter.prototype.getPaymentStatus = originalStatus;
+        JsonRpcProvider.prototype.getNetwork = originalGetNetwork;
+        global.fetch = originalFetch;
+        if (previousReceiver === undefined) delete process.env["GOAT_MERCHANT_RECEIVER"];
+        else process.env["GOAT_MERCHANT_RECEIVER"] = previousReceiver;
+        if (previousIdempotencyReady === undefined) delete process.env["GOAT_DURABLE_IDEMPOTENCY_READY"];
+        else process.env["GOAT_DURABLE_IDEMPOTENCY_READY"] = previousIdempotencyReady;
+      };
+    }
+
+    it("24. Official GOAT client layer is invoked under live mode", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      let createCalled = false;
+      const restore = setupGoatMocks({
+        createPaymentIntent: async (input) => {
+          createCalled = true;
+          return {
+            paymentId: "live-payment-id",
+            status: "created",
+            payToAddress: liveReceiver,
+            tokenAddress: liveToken,
+            tokenDecimals: 6,
+            calldataSignRequest: { domain: {}, types: {}, message: {} },
+            raw: {}
+          } as any;
+        }
+      });
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-24",
+        buyContract: createTestBuyContract("idem-goat-24"),
+      } as any);
+
+      assert.ok(createCalled, "Should have called merchant createPaymentIntent");
+      assert.equal(result.status, "SUCCESS");
+      assert.equal(result.paymentResult?.transactionHash, "0xmocktransfertxhash");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("25. No custom wire-protocol fallback occurs in live mode", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      let fetchRequests: string[] = [];
+      const restore = setupGoatMocks({
+        fetchHandler: async (url) => {
+          fetchRequests.push(url.toString());
+          return new Response(JSON.stringify({ payload: "live research outcome" }), { status: 200 });
+        }
+      });
+
+      const adapter = new PaidResearchAdapter();
+      await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-25",
+        buyContract: createTestBuyContract("idem-goat-25"),
+      } as any);
+
+      // In custom wire protocol, it sent headers to req.url.
+      // In live mode, it only communicates through HttpMerchantGatewayAdapter (which uses fetch under the hood) and the deliver endpoint.
+      // Let's verify that no request was sent directly to custom wire endpoint format (http://local-paid-research-api/v1/research) without official flow
+      const customWireEndpointUsed = fetchRequests.some(url => url.includes("local-paid-research-api"));
+      assert.ok(!customWireEndpointUsed, "Custom wire-protocol fallback endpoint should not be invoked in live mode");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("26. Winner-only payment remains enforced in live mode", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      const restore = setupGoatMocks();
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-26",
+        buyContract: createTestBuyContract("idem-goat-26"),
+        selectedProvider: {
+          id: "mismatching_provider", // Mismatch!
+          name: "Wrong API",
+          score: 80,
+          price: 0.01,
+          latencyMs: 100,
+          mode: "live"
+        } as any
+      } as any);
+
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.equal(result.errorCode, "PAYMENT_PROVIDER_MISMATCH");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("27. Budget guard remains enforced in live mode", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      const restore = setupGoatMocks();
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.005, // Budget (0.005) is less than quote (0.01)
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-27",
+        buyContract: createTestBuyContract("idem-goat-27"),
+      } as any);
+
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.equal(result.errorCode, "PAYMENT_BUDGET_EXCEEDED");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("28. Settlement status check is required before delivery in live mode", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      let statusChecked = false;
+      const restore = setupGoatMocks({
+        getPaymentStatus: async (paymentId) => {
+          statusChecked = true;
+          return {
+            paymentId,
+            status: "created" // MOCK AS UNSETTLED / TIMED OUT
+          } as any;
+        }
+      });
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-28",
+        buyContract: createTestBuyContract("idem-goat-28"),
+      } as any);
+
+      assert.ok(statusChecked, "Should check status first");
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.equal(result.paymentResult?.settlementStatus, "UNKNOWN");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("29. Delivery failure after payment yields PAID_BUT_DELIVERY_FAILED status", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      const restore = setupGoatMocks({
+        fetchHandler: async () => new Response(JSON.stringify({ payload: "[PAID_BUT_DELIVERY_FAILED] error" }), { status: 500 }) // Fails delivery
+      });
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-29",
+        buyContract: createTestBuyContract("idem-goat-29"),
+      } as any);
+
+      assert.equal(result.status, "PAID_BUT_DELIVERY_FAILED");
+      assert.equal(result.paymentResult?.settlementStatus, "SETTLED");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("30. Simulation mode is clearly labeled", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      process.env["PAYMENT_MODE"] = "simulation";
+
+      const plan: any = {
+        id: "plan-mock-30",
+        intent: {
+          category: "paid_research",
+          confidence: 0.95,
+          matchedKeywords: ["premium"],
+        },
+        originalTask: "premium research task",
+        totalBudget: 1.0,
+        priority: "balanced",
+        serviceRequirements: [
+          { service: "paid_research", executionOrder: 1, rationale: "test" },
+        ],
+        serviceResults: [
+          {
+            service: "paid_research",
+            allocatedBudget: 0.05,
+            procurementResult: {
+              status: "SUCCESS",
+              selectedProvider: {
+                ...PAID_RESEARCH_PROVIDER_ENTRY,
+                score: 98,
+              },
+              selectedCost: 0.01,
+              selectedLatencyMs: 350,
+              decisionReasons: [],
+              rankedProviders: [],
+            },
+          },
+        ],
+        totalAllocatedBudget: 0.05,
+        estimatedTotalCost: 0.01,
+        estimatedTotalSavings: 0.04,
+        planRationale: "",
+      };
+
+      const reg = new AdapterRegistry();
+      reg.register(new SimulatedPaidResearchAdapter());
+
+      const result = await executePlan(plan, reg);
+
+      assert.equal(result.status, "SUCCESS");
+      assert.ok(result.finalResult);
+      assert.match(result.finalResult!, /=== SIMULATED GOAT\/x402 PAYMENT ===/);
+      assert.match(result.serviceExecutions[0]!.paymentResult!.transactionHash!, /^sim_tx_/);
+      assert.equal(result.serviceExecutions[0]!.executionMode, "demo");
+      assert.equal(result.serviceExecutions[0]!.integrationClassification, "SIMULATED");
+      assert.equal(result.overallExecutionMode, "demo");
+
+      process.env["PAYMENT_MODE"] = prevMode;
+    });
+
+    it("31. Live results cannot be fabricated and fails truthfully if config is missing", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      delete process.env["GOAT_PRIVATE_KEY"];
+      delete process.env["GOAT_MERCHANT_URL"];
+      delete process.env["GOAT_MERCHANT_API_KEY"];
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-31"
+      } as any);
+
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.equal(result.errorCode, "PAYMENT_NOT_CONFIGURED"); // Blocks fabrication
+
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey;
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl;
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey;
+    });
+
+    it("32. Live mode sanitizes secrets and keys in audit logs", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      const restore = setupGoatMocks({
+        createPaymentIntent: async () => ({
+          paymentId: "live-payment-id",
+          status: "created",
+          payToAddress: liveReceiver,
+          tokenAddress: liveToken,
+          tokenDecimals: 6,
+          calldataSignRequest: { domain: {}, types: {}, message: {} },
+          raw: {
+            privateKey: "0xshould_be_removed",
+            secret: "should_be_removed",
+            apiSecret: "should_be_removed"
+          }
+        }) as any
+      });
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-32",
+        buyContract: createTestBuyContract("idem-goat-32"),
+      } as any);
+
+      assert.equal(result.status, "SUCCESS");
+      const serializedAudit = JSON.stringify(result.paymentAudit);
+      assert.ok(!serializedAudit.includes("should_be_removed"), "Audit log must sanitize raw secrets.");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("33. Live mode validates chain ID and blocks mainnet configuration", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      const restore = setupGoatMocks({
+        chainId: 1 // MAINNET (blocked!)
+      });
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-33",
+        buyContract: createTestBuyContract("idem-goat-33"),
+      } as any);
+
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.match(result.paymentAudit?.policyChecks[0]?.message || "", /Unsupported chain ID: 1/);
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("34. Live mode blocks execution if merchant config is missing", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      process.env["GOAT_PRIVATE_KEY"] = livePrivateKey;
+      delete process.env["GOAT_MERCHANT_URL"]; // Missing
+      delete process.env["GOAT_MERCHANT_API_KEY"]; // Missing
+
+      const restore = setupGoatMocks();
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-34"
+      } as any);
+
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.equal(result.errorCode, "LIVE_PAYMENT_BLOCKED");
+      assert.match(result.errorMessage || "", /LIVE PAYMENT BLOCKED — REAL GOAT MERCHANT NOT CONFIGURED/);
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
+    it("35. Live mode blocks execution if wallet key is missing", async () => {
+      const prevMode = process.env["PAYMENT_MODE"];
+      const prevKey = process.env["GOAT_PRIVATE_KEY"];
+      const prevMnemonic = process.env["WALLET_MNEMONIC"];
+      const prevMerchantUrl = process.env["GOAT_MERCHANT_URL"];
+      const prevMerchantKey = process.env["GOAT_MERCHANT_API_KEY"];
+
+      process.env["PAYMENT_MODE"] = "live";
+      delete process.env["GOAT_PRIVATE_KEY"]; // Missing
+      delete process.env["WALLET_MNEMONIC"]; // Missing
+      process.env["GOAT_MERCHANT_URL"] = "http://real-merchant.internal";
+      process.env["GOAT_MERCHANT_API_KEY"] = "real-api-key";
+
+      const restore = setupGoatMocks();
+
+      const adapter = new PaidResearchAdapter();
+      const result = await adapter.execute({
+        service: "paid_research",
+        task: "do research",
+        allocatedBudget: 0.05,
+        procurementId: "p-123",
+        taskId: "t-123",
+        idempotencyKey: "idem-goat-35"
+      } as any);
+
+      assert.equal(result.status, "EXECUTION_FAILED");
+      assert.equal(result.errorCode, "PAYMENT_NOT_CONFIGURED");
+
+      restore();
+      process.env["PAYMENT_MODE"] = prevMode;
+      if (prevKey) process.env["GOAT_PRIVATE_KEY"] = prevKey; else delete process.env["GOAT_PRIVATE_KEY"];
+      if (prevMnemonic) process.env["WALLET_MNEMONIC"] = prevMnemonic; else delete process.env["WALLET_MNEMONIC"];
+      if (prevMerchantUrl) process.env["GOAT_MERCHANT_URL"] = prevMerchantUrl; else delete process.env["GOAT_MERCHANT_URL"];
+      if (prevMerchantKey) process.env["GOAT_MERCHANT_API_KEY"] = prevMerchantKey; else delete process.env["GOAT_MERCHANT_API_KEY"];
+    });
+
   });
 
 });

@@ -269,7 +269,7 @@ export const providers: Provider[] = [
   },
   {
     id: "paidresearchapi",
-    name: "PaidResearchAPI",
+    name: "MeterMind Controlled Research Service",
     category: "Paid Research",
     price: 0.01,
     quality: 98,
@@ -280,11 +280,11 @@ export const providers: Provider[] = [
     failed: 1,
     spend: 15.00,
     trend: 0,
-    assessment: "Genuine mock x402-payable premium research API settled on GOAT Network.",
+    assessment: "MeterMind Controlled Research Service. Simulated premium service for payment loop testing.",
     priceHistory: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
     qualityHistory: [98, 98, 98, 98, 98, 98, 98],
     paymentModel: "x402" as const,
-    paymentDestination: "0x789C402PaidResearchMerchantAddress0000"
+    paymentDestination: "sim_merchant_paidresearchapi"
   }
 ];
 
@@ -696,7 +696,7 @@ export const BITFINEX_PROVIDER_ENTRY: Provider = {
 
 export const PAID_RESEARCH_PROVIDER_ENTRY: Provider = {
   id: "paidresearchapi",
-  name: "PaidResearchAPI",
+  name: "MeterMind Controlled Research Service",
   category: "Paid Research",
   price: 0.01,
   quality: 98,
@@ -707,14 +707,14 @@ export const PAID_RESEARCH_PROVIDER_ENTRY: Provider = {
   failed: 1,
   spend: 15.00,
   trend: 0,
-  assessment: "Genuine mock x402-payable premium research API settled on GOAT Network.",
+  assessment: "MeterMind Controlled Research Service. Simulated premium service for payment loop testing.",
   priceHistory: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
   qualityHistory: [98, 98, 98, 98, 98, 98, 98],
   capabilities: ["paid_research"],
   metricSource: "declared" as const,
-  mode: "live" as const,
+  mode: "demo" as const,
   paymentModel: "x402" as const,
-  paymentDestination: "0x789C402PaidResearchMerchantAddress0000"
+  paymentDestination: "sim_merchant_paidresearchapi"
 };
 
 

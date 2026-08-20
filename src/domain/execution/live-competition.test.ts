@@ -4,11 +4,11 @@
  * Run with: npx tsx --test src/domain/execution/live-competition.test.ts
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { CoinGeckoAdapter } from "../../server/providers/coingecko";
-import { BitfinexAdapter } from "../../server/providers/bitfinex";
+import { CoinGeckoAdapter as OriginalCoinGeckoAdapter } from "../../server/providers/coingecko";
+import { BitfinexAdapter as OriginalBitfinexAdapter } from "../../server/providers/bitfinex";
 import { executePlan } from "./executor";
 import { AdapterRegistry } from "./registry";
 import { evaluateLiveObservations, calculateQuoteDifference } from "../procurement/live-evaluation";
@@ -19,21 +19,26 @@ import type { EvaluatedProvider } from "../procurement/types";
 // Mock Helpers
 // ---------------------------------------------------------------------------
 
-const originalFetch = globalThis.fetch;
 let mockFetchHandler: ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) | null = null;
 
-before(() => {
-  globalThis.fetch = async (input, init) => {
-    if (mockFetchHandler) {
-      return mockFetchHandler(input, init);
-    }
-    return new Response(JSON.stringify({}), { status: 404 });
-  };
-});
+const localFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  if (mockFetchHandler) {
+    return mockFetchHandler(input, init);
+  }
+  return new Response(JSON.stringify({}), { status: 404 });
+};
 
-after(() => {
-  globalThis.fetch = originalFetch;
-});
+class CoinGeckoAdapter extends OriginalCoinGeckoAdapter {
+  constructor(apiKey: string | undefined) {
+    super(apiKey, localFetch);
+  }
+}
+
+class BitfinexAdapter extends OriginalBitfinexAdapter {
+  constructor() {
+    super(localFetch);
+  }
+}
 
 function createMockResponse(body: any, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -218,12 +223,12 @@ describe("Milestone #5 — Multi-Provider Live Execution & Selection Competition
     mockFetchHandler = async (url) => {
       const urlStr = url.toString();
       if (urlStr.includes("coingecko.com")) {
-        // Preferred but slower (40ms)
-        await new Promise(resolve => setTimeout(resolve, 40));
+        // Preferred but slower (12ms)
+        await new Promise(resolve => setTimeout(resolve, 12));
         return createMockResponse(mockGeckoData(64000, 1900));
       } else if (urlStr.includes("bitfinex.com")) {
-        // Slower (10ms) but not preferred
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // Slower (2ms) but not preferred
+        await new Promise(resolve => setTimeout(resolve, 2));
         return createMockResponse(mockBitfinexData(64000, 1900));
       }
       return new Response("Not found", { status: 404 });
@@ -241,7 +246,7 @@ describe("Milestone #5 — Multi-Provider Live Execution & Selection Competition
 
     const res = await executePlan(plan, registry);
     assert.equal(res.status, "SUCCESS");
-    // With 100ms virtual latency boost, coingecko virtual latency is 40 - 100 = -60ms, defeating bitfinex (10ms)
+    // With 50ms virtual latency boost, coingecko virtual latency is 12 - 50 = -38ms, defeating bitfinex (2ms)
     assert.equal(res.selectedLiveProvider, "coingecko");
   });
 

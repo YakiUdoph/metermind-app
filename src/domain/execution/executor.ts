@@ -37,6 +37,10 @@ import type {
 import { AdapterRegistry, createDefaultRegistry } from "./registry";
 import { evaluateLiveObservations } from "@/domain/procurement/live-evaluation";
 import type { LiveObservation } from "@/domain/procurement/live-evaluation";
+import { BudgetLedger } from "../procurement/budget-ledger";
+import { runProcurement } from "../procurement/scoring";
+import type { TrustDataProvider } from "../procurement/trust";
+import { planningProviders } from "@/lib/mock";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -129,6 +133,7 @@ function buildFailedResult(
 export async function executePlan(
   plan: ProcurementPlan,
   registry?: AdapterRegistry,
+  trustProvider?: TrustDataProvider,
 ): Promise<ExecutionResult> {
   const reg = registry ?? createDefaultRegistry();
   const startedAt = Date.now();
@@ -145,6 +150,9 @@ export async function executePlan(
       "Plan contains no service requirements to execute.",
     );
   }
+
+  // ── Initialize Budget Ledger ──────────────────────────────────────────────
+  const budgetLedger = new BudgetLedger(plan.totalBudget);
 
   // Group services by executionOrder for pipeline execution
   const groups = groupByExecutionOrder(plan.serviceRequirements, plan.serviceResults);
@@ -172,9 +180,9 @@ export async function executePlan(
         );
       }
 
-      // ── Budget guard ──────────────────────────────────────────────────────
-      const hasPrice = selectedProvider.price !== undefined && selectedProvider.price !== null;
-      if (hasPrice && selectedProvider.price! > allocatedBudget) {
+      // ── Budget Reservation ────────────────────────────────────────────────
+      const reserved = budgetLedger.reserve(requirement.service, allocatedBudget);
+      if (!reserved) {
         const failedExec: ServiceExecutionResult = {
           status: "EXECUTION_BUDGET_EXCEEDED",
           service: requirement.service,
@@ -187,8 +195,78 @@ export async function executePlan(
           measuredLatencyMs: 0,
           declaredCost: selectedProvider.price,
           allocatedBudget,
+          errorMessage: `Insufficient remaining budget in ledger to execute "${requirement.service}" (remaining: $${budgetLedger.getRemaining().toFixed(3)}).`,
+        };
+        completedExecutions.push(failedExec);
+        return buildFailedResult(
+          plan, completedExecutions, startedAt,
+          "EXECUTION_BUDGET_EXCEEDED",
+          requirement.service,
+          failedExec.errorMessage!,
+        );
+      }
+
+      // ── Quote Freshness & Requote check ───────────────────────────────────
+      const quoteTimestamp = (innerProcResult as any).timestamp || new Date().toISOString();
+      const isQuoteExpired = Date.now() - new Date(quoteTimestamp).getTime() > 5000;
+      
+      let finalProvider = selectedProvider;
+      if (isQuoteExpired) {
+        let attempts = 0;
+        let success = false;
+        while (attempts < 2 && !success) {
+          attempts++;
+          try {
+            const trace = await runProcurement(
+              {
+                task: plan.originalTask,
+                totalBudget: plan.totalBudget,
+                priority: (innerProcResult as any).request?.priority || innerProcResult.request.priority || "balanced",
+                constraints: (innerProcResult as any).request?.constraints || innerProcResult.request.constraints
+              },
+              planningProviders,
+              requirement.service,
+              trustProvider
+            );
+            if (trace.winner) {
+              success = true;
+              const newWinnerOffer = trace.discoveredCandidates.find(c => c.providerId === trace.winner);
+              if (newWinnerOffer) {
+                finalProvider = {
+                  ...selectedProvider,
+                  id: newWinnerOffer.providerId,
+                  name: newWinnerOffer.providerId === "coingecko" ? "CoinGecko" : (newWinnerOffer.providerId === "bitfinex" ? "Bitfinex" : newWinnerOffer.providerId),
+                  price: newWinnerOffer.price,
+                  latency: newWinnerOffer.estimatedLatencyMs,
+                  quality: newWinnerOffer.quality,
+                  reliability: newWinnerOffer.reliability
+                } as any;
+              }
+            }
+          } catch {
+            // ignore requoting failures in the loop
+          }
+        }
+      }
+
+      // ── Budget guard ──────────────────────────────────────────────────────
+      const hasPrice = finalProvider.price !== undefined && finalProvider.price !== null;
+      if (hasPrice && finalProvider.price! > allocatedBudget) {
+        budgetLedger.release(requirement.service);
+        const failedExec: ServiceExecutionResult = {
+          status: "EXECUTION_BUDGET_EXCEEDED",
+          service: requirement.service,
+          providerId: finalProvider.id,
+          providerName: finalProvider.name,
+          executionMode: "demo",
+          payload: null,
+          startedAt: Date.now(),
+          completedAt: Date.now(),
+          measuredLatencyMs: 0,
+          declaredCost: finalProvider.price,
+          allocatedBudget,
           errorMessage:
-            `Provider cost $${selectedProvider.price!.toFixed(3)} exceeds ` +
+            `Provider cost $${finalProvider.price!.toFixed(3)} exceeds ` +
             `allocated budget $${allocatedBudget.toFixed(3)} for service "${requirement.service}".`,
         };
         completedExecutions.push(failedExec);
@@ -201,23 +279,24 @@ export async function executePlan(
       }
 
       // ── Adapter resolution ────────────────────────────────────────────────
-      const resolved = reg.resolve(selectedProvider.id, requirement.service);
+      const resolved = reg.resolve(finalProvider.id, requirement.service);
 
       if (!resolved.ok) {
+        budgetLedger.release(requirement.service);
         const failedExec: ServiceExecutionResult = {
           status: resolved.status,
           service: requirement.service,
-          providerId: selectedProvider.id,
-          providerName: selectedProvider.name,
+          providerId: finalProvider.id,
+          providerName: finalProvider.name,
           executionMode: "demo",
           payload: null,
           startedAt: Date.now(),
           completedAt: Date.now(),
           measuredLatencyMs: 0,
-          declaredCost: selectedProvider.price,
+          declaredCost: finalProvider.price,
           allocatedBudget,
           errorMessage:
-            `Adapter resolution failed for provider "${selectedProvider.id}" ` +
+            `Adapter resolution failed for provider "${finalProvider.id}" ` +
             `on service "${requirement.service}": ${resolved.status}`,
         };
         completedExecutions.push(failedExec);
@@ -235,15 +314,15 @@ export async function executePlan(
         task: plan.originalTask,
         priorContext,
         allocatedBudget,
-        selectedProvider,
+        selectedProvider: finalProvider,
         procurementId: plan.id || "mock-proc-id",
         taskId: plan.id || "mock-task-id",
-        idempotencyKey: `${plan.id || "mock-proc-id"}-${requirement.service}-${selectedProvider.id}`,
+        idempotencyKey: `${plan.id || "mock-proc-id"}-${requirement.service}-${finalProvider.id}`,
       };
- 
+
       const isLiveMarketData =
         requirement.service === "market_data" &&
-        selectedProvider.mode === "live";
+        finalProvider.mode === "live";
  
       let execResult: ServiceExecutionResult;
  
@@ -256,11 +335,11 @@ export async function executePlan(
           // Run parallel probes
           const observationsPromise = liveAdapters.map(async (adapter) => {
             const startObs = Date.now();
-            let providerEntry = selectedProvider;
+            let providerEntry = finalProvider;
             if (adapter.providerId === "coingecko") {
-              providerEntry = { ...selectedProvider, id: "coingecko", name: "CoinGecko" };
+              providerEntry = { ...finalProvider, id: "coingecko", name: "CoinGecko" };
             } else if (adapter.providerId === "bitfinex") {
-              providerEntry = { ...selectedProvider, id: "bitfinex", name: "Bitfinex" };
+              providerEntry = { ...finalProvider, id: "bitfinex", name: "Bitfinex" };
             }
  
             const req: ServiceExecutionRequest = {
@@ -425,6 +504,7 @@ export async function executePlan(
       completedExecutions.push(execResult);
 
       if (execResult.status !== "SUCCESS") {
+        budgetLedger.release(requirement.service);
         const failedResult = buildFailedResult(
           plan, completedExecutions, startedAt,
           execResult.status,
@@ -441,6 +521,8 @@ export async function executePlan(
         };
       }
 
+      budgetLedger.confirm(requirement.service, execResult.declaredCost || finalProvider.price || 0.0);
+ 
       // ── Forward output to next stage ──────────────────────────────────────
       priorContext = execResult.payload;
     }
@@ -512,12 +594,15 @@ function composeFinalResult(
   if (intentCategory === "paid_research") {
     const paidExec = completedExecutions.find((e) => e.service === "paid_research");
     if (paidExec) {
-      const isLive = paidExec.paymentResult?.network?.startsWith("GOAT") || process.env["PAYMENT_MODE"] === "live";
+      const isLive = paidExec.paymentResult && 
+                     paidExec.paymentResult.network?.startsWith("GOAT") && 
+                     !paidExec.paymentResult.transactionHash?.startsWith("sim_") &&
+                     process.env["PAYMENT_MODE"] === "live";
       let resultText = "";
       if (isLive) {
         resultText += "=== LIVE x402 PAYMENT ===\n";
       } else {
-        resultText += "=== SIMULATED PAYMENT ===\n";
+        resultText += "=== SIMULATED GOAT/x402 PAYMENT ===\n";
       }
       resultText += `Service: ${paidExec.service}\n`;
       resultText += `Provider: ${paidExec.providerName}\n`;

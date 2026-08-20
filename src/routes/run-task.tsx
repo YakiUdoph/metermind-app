@@ -71,6 +71,54 @@ const checkWalletStatusServerFn = createServerFn({ method: "GET" })
     };
   });
 
+/**
+ * Server function to perform the GOAT Network Live Readiness check.
+ */
+const checkGoatReadinessServerFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    let isAgentKitInstalled = false;
+    let goatSdkPath = "Not Found";
+    try {
+      await import("@goatnetwork/agentkit");
+      isAgentKitInstalled = true;
+      goatSdkPath = "@goatnetwork/agentkit";
+    } catch (e) {
+      // ignore
+    }
+
+    const { getWalletConfig, getWalletAddress, getWalletBalances } = await import("@/server/payment/wallet");
+    const config = getWalletConfig();
+    const walletAddress = await getWalletAddress().catch(() => "None");
+
+    let hasNativeGas: "YES" | "NO" | "UNKNOWN" = "UNKNOWN";
+    let isPaymentTokenConfigured: "YES" | "NO" | "UNKNOWN" = "UNKNOWN";
+
+    if (config.privateKey || config.mnemonic) {
+      try {
+        const balances = await getWalletBalances();
+        hasNativeGas = balances.nativeGas > 0n ? "YES" : "NO";
+        isPaymentTokenConfigured = balances.tokenBalance > 0n ? "YES" : "NO";
+      } catch (err) {
+        // Safe fallback
+      }
+    }
+
+    const isMerchantConfigured = !!(process.env["GOAT_MERCHANT_URL"] && process.env["GOAT_MERCHANT_API_KEY"]);
+
+    return {
+      isAgentKitInstalled,
+      goatSdkPath,
+      network: "GOAT Testnet3",
+      chainId: 48816,
+      isWalletConfigured: !!(config.privateKey || config.mnemonic),
+      walletAddress,
+      hasNativeGas,
+      isPaymentTokenConfigured,
+      isMerchantConfigured,
+      paymentMode: config.paymentMode,
+    };
+  });
+
 export const Route = createFileRoute("/run-task")({
   head: () => ({
     meta: [
@@ -146,6 +194,18 @@ function RunTaskPage() {
 
   const [paymentPreviewPlan, setPaymentPreviewPlan] = useState<any | null>(null);
   const [walletStatus, setWalletStatus] = useState<{ mode: "simulation" | "live"; configured: boolean; maxPayment: number } | null>(null);
+  const [goatReadiness, setGoatReadiness] = useState<{
+    isAgentKitInstalled: boolean;
+    goatSdkPath: string;
+    network: string;
+    chainId: number;
+    isWalletConfigured: boolean;
+    walletAddress: string;
+    hasNativeGas: string;
+    isPaymentTokenConfigured: string;
+    isMerchantConfigured: boolean;
+    paymentMode: string;
+  } | null>(null);
 
   const activeSteps = mode === "full" ? PLANNING_STEPS : SIMPLE_STEPS;
   const running = step >= 0 && step < activeSteps.length;
@@ -157,6 +217,9 @@ function RunTaskPage() {
     });
     checkWalletStatusServerFn().then((res) => {
       setWalletStatus(res);
+    });
+    checkGoatReadinessServerFn().then((res) => {
+      setGoatReadiness(res);
     });
   }, []);
 
@@ -339,7 +402,9 @@ function RunTaskPage() {
               </div>
               <h3 className="text-[18px] font-medium text-paper">x402 Payment Preview</h3>
               <p className="text-[13px] leading-relaxed text-smoke">
-                The procurement plan has selected a paid provider requiring an on-chain transaction. Please authorize the payment below:
+                {walletStatus?.mode === "live"
+                  ? "The procurement plan selected a paid provider. Live execution remains blocked until a frozen Buy Contract, durable idempotency, and real merchant receiver are configured."
+                  : "The procurement plan selected the controlled simulated paid provider. This authorization runs a local simulation and does not send funds or create a blockchain transaction."}
               </p>
               
               <div className="rounded-lg border border-border bg-void/50 p-4 space-y-2.5">
@@ -610,6 +675,89 @@ function RunTaskPage() {
                     Configure <code className="text-mist font-mono text-[10px]">COINGECKO_API_KEY</code> in your environment to enable real HTTP market data execution. Runs in simulated Demo mode otherwise.
                   </p>
                 )}
+              </div>
+
+              {/* GOAT Network Live Readiness Status Panel */}
+              <div className="mt-5 border-t border-border/60 pt-4">
+                <div className="rounded-lg border border-border bg-void/35 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-bold text-smoke tracking-wider uppercase">GOAT Network Live Readiness</span>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded text-[10px] font-mono",
+                      goatReadiness?.paymentMode === "live"
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                        : "bg-lime/10 text-lime border border-lime/20"
+                    )}>
+                      {goatReadiness?.paymentMode === "live" ? "Live" : "Simulation"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">GOAT AgentKit:</span>
+                      <span className={cn(
+                        "font-semibold",
+                        goatReadiness?.isAgentKitInstalled ? "text-emerald-400" : "text-blocked"
+                      )}>
+                        {goatReadiness?.isAgentKitInstalled ? "YES" : "NO"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">SDK path:</span>
+                      <span className="font-mono text-[11px] text-paper text-right truncate max-w-[120px]" title={goatReadiness?.goatSdkPath}>
+                        {goatReadiness?.goatSdkPath || "..."}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">Network (Chain ID):</span>
+                      <span className="text-paper text-right font-mono text-[11px]">
+                        {goatReadiness?.network || "GOAT Testnet3"} ({goatReadiness?.chainId || 48816})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">Wallet configured:</span>
+                      <span className={cn(
+                        "font-semibold",
+                        goatReadiness?.isWalletConfigured ? "text-emerald-400" : "text-blocked"
+                      )}>
+                        {goatReadiness?.isWalletConfigured ? "YES" : "NO"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20 sm:col-span-2">
+                      <span className="text-ash">Wallet address:</span>
+                      <span className="font-mono text-[11px] text-paper truncate max-w-[180px]" title={goatReadiness?.walletAddress}>
+                        {goatReadiness?.walletAddress || "None"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">Native gas:</span>
+                      <span className={cn(
+                        "font-semibold",
+                        goatReadiness?.hasNativeGas === "YES" ? "text-emerald-400" : goatReadiness?.hasNativeGas === "NO" ? "text-blocked" : "text-amber-400"
+                      )}>
+                        {goatReadiness?.hasNativeGas || "UNKNOWN"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">Token (USDC):</span>
+                      <span className={cn(
+                        "font-semibold",
+                        goatReadiness?.isPaymentTokenConfigured === "YES" ? "text-emerald-400" : goatReadiness?.isPaymentTokenConfigured === "NO" ? "text-blocked" : "text-amber-400"
+                      )}>
+                        {goatReadiness?.isPaymentTokenConfigured || "UNKNOWN"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/20">
+                      <span className="text-ash">Merchant configured:</span>
+                      <span className={cn(
+                        "font-semibold",
+                        goatReadiness?.isMerchantConfigured ? "text-emerald-400" : "text-blocked"
+                      )}>
+                        {goatReadiness?.isMerchantConfigured ? "YES" : "NO"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-6">

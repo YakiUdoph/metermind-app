@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { Wallet, JsonRpcProvider, Contract } from "ethers";
 
 export interface WalletSignerConfig {
   privateKey?: string | undefined;
@@ -32,6 +33,66 @@ export function isWalletConfigured(): boolean {
   return !!(config.privateKey || config.mnemonic);
 }
 
+export async function getWalletAddress(): Promise<string> {
+  const config = getWalletConfig();
+  if (!config.privateKey && !config.mnemonic) {
+    return "None";
+  }
+  try {
+    if (config.privateKey) {
+      const wallet = new Wallet(config.privateKey);
+      return wallet.address;
+    } else if (config.mnemonic) {
+      const wallet = Wallet.fromPhrase(config.mnemonic);
+      return wallet.address;
+    }
+  } catch (err) {
+    return "Error deriving address";
+  }
+  return "None";
+}
+
+export async function getWalletBalances(tokenAddress?: string): Promise<{ nativeGas: bigint; tokenBalance: bigint }> {
+  const config = getWalletConfig();
+  const address = await getWalletAddress();
+  if (address === "None" || address.startsWith("Error")) {
+    return { nativeGas: 0n, tokenBalance: 0n };
+  }
+
+  // Fallback RPC list
+  const primaryRpc = process.env["GOAT_RPC_URL"] || "https://rpc.testnet3.goat.network";
+  const fallbackRpc = process.env["GOAT_RPC_URL_FALLBACK_1"] || "https://48816.rpc.thirdweb.com";
+  const rpcList = [primaryRpc, fallbackRpc];
+
+  for (const rpcUrl of rpcList) {
+    try {
+      const provider = new JsonRpcProvider(rpcUrl);
+      
+      // Bounded timeout for RPC response
+      const getBalancePromise = provider.getBalance(address);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("RPC_TIMEOUT")), 5000)
+      );
+      
+      const nativeGas = await Promise.race([getBalancePromise, timeoutPromise]);
+
+      const usdcAddress = tokenAddress || "0x3022b87ac063DE95b1570F46f5e470F8B53112D8";
+      const abi = ["function balanceOf(address) view returns (uint256)"];
+      const contract = new Contract(usdcAddress, abi, provider);
+      
+      const getBalanceTokenPromise = (contract as any).balanceOf(address);
+      const tokenBalance = await Promise.race([getBalanceTokenPromise, timeoutPromise]);
+
+      return { nativeGas, tokenBalance };
+    } catch (e) {
+      // Network failure on this RPC, try fallback
+      continue;
+    }
+  }
+
+  return { nativeGas: 0n, tokenBalance: 0n };
+}
+
 export interface SignatureResult {
   signature: string;
   transactionHash: string;
@@ -55,43 +116,13 @@ export function signPaymentChallenge(
   const config = getWalletConfig();
 
   if (config.paymentMode === "live") {
-    const key = config.privateKey || config.mnemonic;
-    if (!key) {
-      throw new Error("PAYMENT_NOT_CONFIGURED");
-    }
-
-    if (challenge.price > config.maxLivePayment) {
-      throw new Error("PAYMENT_BUDGET_EXCEEDED");
-    }
-
-    // Deterministic signature generated via Node.js crypto using the server-side key
-    const messageToSign = JSON.stringify({
-      price: challenge.price,
-      asset: challenge.asset,
-      network: challenge.network,
-      paymentDestination: challenge.paymentDestination,
-      idempotencyKey: challenge.idempotencyKey,
-      timestamp: Date.now()
-    });
-
-    const hmac = crypto.createHmac("sha256", key);
-    hmac.update(messageToSign);
-    const signature = `0x${hmac.digest("hex")}`;
-    const transactionHash = `0x${crypto.createHash("sha256").update(signature).digest("hex")}`;
-    const paymentReference = `ref-live-${crypto.randomBytes(8).toString("hex")}`;
-
-    return {
-      signature,
-      transactionHash,
-      paymentReference,
-      mode: "live"
-    };
+    throw new Error("LIVE_SIGNING_REQUIRES_AGENTKIT");
   } else {
-    // Simulation Mode
+    // Simulation Mode - deterministic prefixed fake references that do not mimic real tx hashes
     const mockMsg = `SIMULATED_SIGNATURE_FOR_${challenge.idempotencyKey}`;
-    const signature = `0x_sim_${crypto.createHash("sha256").update(mockMsg).digest("hex")}`;
-    const transactionHash = `0x_sim_tx_${crypto.randomBytes(32).toString("hex")}`;
-    const paymentReference = `ref-sim-${crypto.randomBytes(8).toString("hex")}`;
+    const signature = `sim_sig_${crypto.createHash("sha256").update(mockMsg).digest("hex")}`;
+    const transactionHash = `sim_tx_${crypto.createHash("sha256").update(mockMsg + "_tx").digest("hex")}`;
+    const paymentReference = `sim_ref_${challenge.idempotencyKey}`;
 
     return {
       signature,

@@ -20,7 +20,9 @@ import { executePlan } from "@/domain/execution/executor";
 import { createDefaultRegistry } from "@/domain/execution/registry";
 import { createCoinGeckoAdapter, COINGECKO_PROVIDER_ID } from "@/server/providers/coingecko";
 import { BitfinexAdapter } from "@/server/providers/bitfinex";
-import { PaidResearchAdapter } from "@/server/providers/paid-research";
+import { PaidResearchAdapter } from "@/server/providers/paid-research-live";
+import { SimulatedPaidResearchAdapter } from "@/server/providers/simulated-paid-research";
+import { getWalletConfig } from "@/server/payment/wallet";
 import type { ProcurementPlan } from "@/domain/planning/types";
 import type { ExecutionResult } from "@/domain/execution/types";
 
@@ -52,9 +54,13 @@ function createServerRegistry() {
   const bitfinexAdapter = new BitfinexAdapter();
   registry.register(bitfinexAdapter);
  
-  // Register PaidResearch live adapter (handles x402 payment verification)
-  const paidResearchAdapter = new PaidResearchAdapter();
-  registry.register(paidResearchAdapter);
+  // Conditionally register PaidResearch live adapter or simulation adapter
+  const config = getWalletConfig();
+  if (config.paymentMode === "live") {
+    registry.register(new PaidResearchAdapter());
+  } else {
+    registry.register(new SimulatedPaidResearchAdapter());
+  }
 
   return registry;
 }

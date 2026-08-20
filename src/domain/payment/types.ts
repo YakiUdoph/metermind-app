@@ -13,6 +13,10 @@ export interface PaymentQuote {
   asset: string;
   network: string;
   paymentDestination: string;
+  quoteId?: string | undefined;
+  tokenContractAddress?: string | undefined;
+  chainId?: number | undefined;
+  payerAddress?: string | undefined;
   expiresAt?: string | undefined;
   source: string;
   raw?: any | undefined; // Raw challenge metadata stored only server-side

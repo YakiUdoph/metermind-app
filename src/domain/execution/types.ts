@@ -20,6 +20,7 @@ import type { ServiceCategory } from "@/domain/planning/types";
 import type { EvaluatedProvider } from "@/domain/procurement/types";
 import type { ProcurementPlan } from "@/domain/planning/types";
 import type { LiveObservation } from "@/domain/procurement/live-evaluation";
+import type { BuyContract } from "@/domain/payment/contract";
 
 // ---------------------------------------------------------------------------
 // Execution Mode
@@ -33,6 +34,11 @@ import type { LiveObservation } from "@/domain/procurement/live-evaluation";
  * A judge must never be misled into believing demo output came from a real API.
  */
 export type ExecutionMode = "demo" | "live";
+export type IntegrationClassification =
+  | "REAL"
+  | "SIMULATED"
+  | "CONTROLLED_DEMO"
+  | "UNKNOWN";
 
 // ---------------------------------------------------------------------------
 // Execution Status
@@ -120,6 +126,7 @@ export interface ServiceExecutionRequest {
   readonly procurementId?: string | undefined;
   readonly taskId?: string | undefined;
   readonly idempotencyKey?: string | undefined;
+  readonly buyContract?: BuyContract | undefined;
 }
 
 /** Result of a single service execution attempt. */
@@ -133,6 +140,8 @@ export interface ServiceExecutionResult {
    * TypeScript ensures this cannot be changed to "live" accidentally.
    */
   readonly executionMode: ExecutionMode;
+  /** Truthful infrastructure classification; simulated work is never REAL. */
+  readonly integrationClassification?: IntegrationClassification | undefined;
   /** Service output payload (text). null on failure. */
   readonly payload: string | null;
   /**

@@ -1,10 +1,10 @@
 import type { ProviderAdapter, ServiceExecutionRequest, ServiceExecutionResult } from "../../domain/execution/types";
 import type { ServiceCategory } from "../../domain/planning/types";
-import { executeX402Request } from "../payment/x402-client";
+import { executeX402Request } from "../payment/simulated-x402-client";
 import { isWalletConfigured } from "../payment/wallet";
 
 export const PAID_RESEARCH_PROVIDER_ID = "paidresearchapi";
-export const PAID_RESEARCH_MERCHANT_ADDRESS = "0x789C402PaidResearchMerchantAddress0000";
+export const PAID_RESEARCH_MERCHANT_ADDRESS = "sim_merchant_paidresearchapi";
 
 export interface MockRequest {
   method: string;
@@ -102,8 +102,8 @@ export async function handlePaidResearchRequest(req: MockRequest): Promise<MockR
   // Set the settlement success headers
   const receipt = {
     status: "SUCCESS",
-    transactionHash: sigData.transactionHash || "0xmocktxhash",
-    paymentReference: sigData.paymentReference || "ref-mock",
+    transactionHash: sigData.transactionHash || "sim_tx_mock",
+    paymentReference: sigData.paymentReference || "sim_ref_mock",
     settledAt: Date.now()
   };
 
@@ -131,13 +131,14 @@ export async function handlePaidResearchRequest(req: MockRequest): Promise<MockR
 }
 
 /**
- * Adapter implementing the PaidResearchAPI provider execution capability.
+ * Adapter implementing the Simulated MeterMind Controlled Research Service execution capability.
+ * Classified as: CONTROLLED_DEMO_SERVICE.
  */
-export class PaidResearchAdapter implements ProviderAdapter {
+export class SimulatedPaidResearchAdapter implements ProviderAdapter {
   readonly providerId = PAID_RESEARCH_PROVIDER_ID;
-  readonly providerName = "PaidResearchAPI";
+  readonly providerName = "Simulated MeterMind Controlled Research Service";
   readonly supportedCapabilities: readonly ServiceCategory[] = ["paid_research"];
-  readonly executionMode = "live" as const; // Marked as live capability to run x402 pipeline
+  readonly executionMode = "demo" as const;
 
   isAvailable(): boolean {
     return isWalletConfigured();
@@ -176,7 +177,7 @@ export class PaidResearchAdapter implements ProviderAdapter {
       provider: {
         id: this.providerId,
         name: this.providerName,
-        mode: "live",
+        mode: "demo",
         paymentModel: "x402",
         paymentDestination: PAID_RESEARCH_MERCHANT_ADDRESS,
       },
@@ -197,7 +198,8 @@ export class PaidResearchAdapter implements ProviderAdapter {
         service: request.service,
         providerId: this.providerId,
         providerName: this.providerName,
-        executionMode: "live",
+        executionMode: "demo",
+        integrationClassification: "SIMULATED",
         payload: x402Result.payload || "Paid research execution failed during delivery.",
         startedAt,
         completedAt,
@@ -215,7 +217,8 @@ export class PaidResearchAdapter implements ProviderAdapter {
         service: request.service,
         providerId: this.providerId,
         providerName: this.providerName,
-        executionMode: "live",
+        executionMode: "demo",
+        integrationClassification: "SIMULATED",
         payload: "",
         startedAt,
         completedAt,
@@ -232,7 +235,8 @@ export class PaidResearchAdapter implements ProviderAdapter {
       service: request.service,
       providerId: this.providerId,
       providerName: this.providerName,
-      executionMode: "live",
+      executionMode: "demo",
+      integrationClassification: "SIMULATED",
       payload: x402Result.payload || "",
       startedAt,
       completedAt,

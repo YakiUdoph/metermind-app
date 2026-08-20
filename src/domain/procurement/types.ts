@@ -4,7 +4,9 @@ export type ProcurementPriority =
   | "lowest-cost"
   | "balanced"
   | "highest-quality"
-  | "fastest";
+  | "fastest"
+  | "most-reliable"
+  | "highest-trust";
 
 export interface ProcurementConstraints {
   minimumQuality?: number | undefined;

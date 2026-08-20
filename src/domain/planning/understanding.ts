@@ -10,6 +10,8 @@
  */
 
 import type { TaskIntent, TaskIntentCategory, ServiceRequirement } from "./types";
+import type { ProcurementRequest } from "../procurement/procurement-engine-types";
+import type { ProcurementPriority } from "../procurement/types";
 
 // ---------------------------------------------------------------------------
 // Keyword sets
@@ -511,4 +513,214 @@ export function getServiceRequirements(
   }
 
   return INTENT_SERVICE_MAP[category];
+}
+
+// ---------------------------------------------------------------------------
+// Intent & Constraint Extraction Helpers
+// ---------------------------------------------------------------------------
+
+export function parseBudget(text: string): number | undefined {
+  const lower = text.toLowerCase();
+  
+  const r3 = /(\d+(?:\.\d+)?)\s*cents?/;
+  const m3 = lower.match(r3);
+  if (m3 && m3[1]) return parseFloat(m3[1]) / 100;
+
+  const r1 = /(?:under|maximum|max|don't spend more than|budget of)\s*\$?\s*(\d+(?:\.\d+)?)/;
+  const m1 = lower.match(r1);
+  if (m1 && m1[1]) return parseFloat(m1[1]);
+
+  const r2 = /budget\s*:\s*\$?\s*(\d+(?:\.\d+)?)/;
+  const m2 = lower.match(r2);
+  if (m2 && m2[1]) return parseFloat(m2[1]);
+
+  const r4 = /max\s+(\d+(?:\.\d+)?)/;
+  const m4 = lower.match(r4);
+  if (m4 && m4[1]) return parseFloat(m4[1]);
+
+  return undefined;
+}
+
+export function parseLatency(text: string): number | undefined {
+  const lower = text.toLowerCase();
+  
+  const r1 = /(?:under|maximum|max|max latency|latency under)\s*(\d+(?:\.\d+)?)\s*(ms|seconds?|sec?|s)/;
+  const m1 = lower.match(r1);
+  if (m1 && m1[1] && m1[2]) {
+    const val = parseFloat(m1[1]);
+    const unit = m1[2];
+    if (unit.startsWith("ms")) return val;
+    return val * 1000;
+  }
+  
+  return undefined;
+}
+
+export function parseQuality(text: string): number | undefined {
+  const lower = text.toLowerCase();
+  
+  const r1 = /(?:minimum quality|min quality|quality of|quality >=|quality at least)\s*(\d+)/;
+  const m1 = lower.match(r1);
+  if (m1 && m1[1]) return parseInt(m1[1], 10);
+  
+  return undefined;
+}
+
+export function parseReliability(text: string): number | undefined {
+  const lower = text.toLowerCase();
+  
+  const r1 = /(?:minimum reliability|min reliability|reliability of|reliability >=|reliability at least)\s*(\d+)%?/;
+  const m1 = lower.match(r1);
+  if (m1 && m1[1]) return parseInt(m1[1], 10);
+  
+  return undefined;
+}
+
+export function parseExcludedProviders(text: string): string[] {
+  const lower = text.toLowerCase();
+  const list: string[] = [];
+  
+  const matches = lower.matchAll(/(?:don't use|do not use|exclude|except)\s+([\w_-]+)/g);
+  for (const m of matches) {
+    if (m[1]) list.push(m[1].trim());
+  }
+  
+  return list;
+}
+
+export function parsePreferredProviders(text: string): string[] {
+  const lower = text.toLowerCase();
+  const list: string[] = [];
+  
+  const matches = lower.matchAll(/(?:prefer|preferred provider:?)\s+([\w_-]+)/g);
+  for (const m of matches) {
+    if (m[1]) list.push(m[1].trim());
+  }
+  
+  return list;
+}
+
+export function parsePaymentPreference(text: string): "free-only" | "paid-allowed" | "any" {
+  const lower = text.toLowerCase();
+  if (
+    lower.includes("free only") ||
+    lower.includes("do not pay") ||
+    lower.includes("free-only") ||
+    lower.includes("without payment") ||
+    lower.includes("free service") ||
+    lower.includes("free only")
+  ) {
+    return "free-only";
+  }
+  if (lower.includes("paid allowed") || lower.includes("payment allowed")) {
+    return "paid-allowed";
+  }
+  return "any";
+}
+
+export function parseFreshness(text: string): "live" | "static" | "any" {
+  const lower = text.toLowerCase();
+  if (
+    lower.includes("live") ||
+    lower.includes("real-time") ||
+    lower.includes("realtime") ||
+    lower.includes("current") ||
+    lower.includes("latest") ||
+    lower.includes("prices") ||
+    lower.includes("price")
+  ) {
+    return "live";
+  }
+  if (lower.includes("static") || lower.includes("historical") || lower.includes("cached")) {
+    return "static";
+  }
+  return "any";
+}
+
+export function parseNetwork(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  
+  const r1 = /network\s*:\s*([\w_-]+)/;
+  const m1 = lower.match(r1);
+  if (m1 && m1[1]) return m1[1].trim();
+
+  const r2 = /on network\s+([\w_-]+)/;
+  const m2 = lower.match(r2);
+  if (m2 && m2[1]) return m2[1].trim();
+
+  const r3 = /\bon\s+([\w_-]+)/;
+  const m3 = lower.match(r3);
+  if (m3 && m3[1]) {
+    const val = m3[1].trim();
+    if (val !== "time" && val !== "budget" && val !== "network") {
+      return val;
+    }
+  }
+  
+  return undefined;
+}
+
+export function parseDeliveryCriteria(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  
+  const r1 = /contains\s*:\s*([\w_-]+)/;
+  const m1 = lower.match(r1);
+  if (m1 && m1[1]) return `contains:${m1[1]}`;
+  
+  const r2 = /must contain\s+(\w+)/;
+  const m2 = lower.match(r2);
+  if (m2 && m2[1]) return `contains:${m2[1]}`;
+  
+  return undefined;
+}
+
+export function parsePriority(text: string, defaultPriority: ProcurementPriority): ProcurementPriority {
+  const lower = text.toLowerCase();
+  if (lower.includes("cheapest") || lower.includes("lowest cost") || lower.includes("lowest price") || lower.includes("cheap")) {
+    return "lowest-cost";
+  }
+  if (lower.includes("speed") || lower.includes("fastest") || lower.includes("latency")) {
+    return "fastest";
+  }
+  if (lower.includes("highest quality") || lower.includes("best quality") || lower.includes("quality")) {
+    return "highest-quality";
+  }
+  if (lower.includes("most reliable") || lower.includes("reliability")) {
+    return "most-reliable";
+  }
+  return defaultPriority;
+}
+
+export function extractProcurementRequest(
+  taskId: string,
+  rawTask: string,
+  defaultBudget: number,
+  defaultPriority: ProcurementPriority
+): ProcurementRequest {
+  const parsedBudget = parseBudget(rawTask);
+  const budget = parsedBudget !== undefined ? parsedBudget : defaultBudget;
+
+  const parsedPriority = parsePriority(rawTask, defaultPriority);
+  
+  const intent = understandTask(rawTask);
+  const serviceReqs = getServiceRequirements(intent.category, rawTask);
+  const serviceCategories = serviceReqs.map(s => s.service);
+
+  return {
+    taskId,
+    rawTask,
+    serviceRequirements: serviceCategories,
+    budget,
+    currency: "USD",
+    priority: parsedPriority,
+    preferredProviders: parsePreferredProviders(rawTask),
+    excludedProviders: parseExcludedProviders(rawTask),
+    maxLatencyMs: parseLatency(rawTask),
+    minimumQuality: parseQuality(rawTask),
+    minimumReliability: parseReliability(rawTask),
+    freshnessRequirement: parseFreshness(rawTask),
+    networkRequirement: parseNetwork(rawTask),
+    paymentPreference: parsePaymentPreference(rawTask),
+    deliveryCriteria: parseDeliveryCriteria(rawTask)
+  };
 }

@@ -173,6 +173,10 @@ export class BitfinexAdapter implements ProviderAdapter {
   readonly supportedCapabilities: readonly ServiceCategory[] = ["market_data"];
   readonly executionMode = "live" as const;
 
+  constructor(
+    private readonly fetchFn?: typeof fetch
+  ) {}
+
   isAvailable(): boolean {
     return true; // Public unauthenticated API, always available
   }
@@ -208,7 +212,8 @@ export class BitfinexAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      const runFetch = this.fetchFn ?? globalThis.fetch;
+      response = await runFetch(url, {
         method: "GET",
         headers: {
           "Accept": "application/json",

@@ -9,9 +9,13 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
+    "validate:foundation": "npx tsx --test --test-concurrency=1 src/domain/execution/coingecko.test.ts src/domain/execution/execution.test.ts src/domain/execution/live-competition.test.ts src/domain/payment/payment.test.ts src/domain/planning/planning.test.ts src/domain/procurement/scoring.test.ts src/domain/payment/contract.test.ts src/domain/payment/rpc-fallback.test.ts src/domain/procurement/procurement-intelligence.test.ts src/domain/procurement/procurement-proof.test.ts src/domain/procurement/phase3.test.ts",
+    "validate:metermind": "npx tsx --test src/domain/execution/execution.test.ts src/domain/payment/payment.test.ts src/domain/planning/planning.test.ts src/domain/procurement/scoring.test.ts src/domain/payment/contract.test.ts src/domain/payment/rpc-fallback.test.ts src/domain/procurement/procurement-intelligence.test.ts src/domain/procurement/procurement-proof.test.ts src/domain/procurement/phase3.test.ts",
+    "validate:live": "npx tsx scratch/torture-test.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@goatnetwork/agentkit": "^0.2.3",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -49,6 +53,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "goatflow-sdk-server": "^0.3.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",

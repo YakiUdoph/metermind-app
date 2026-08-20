@@ -212,7 +212,10 @@ export class CoinGeckoAdapter implements ProviderAdapter {
   readonly supportedCapabilities: readonly ServiceCategory[] = ["market_data"];
   readonly executionMode = "live" as const;
 
-  constructor(private readonly apiKey: string | undefined) {}
+  constructor(
+    private readonly apiKey: string | undefined,
+    private readonly fetchFn?: typeof fetch
+  ) {}
 
   isAvailable(): boolean {
     // Available if the key is configured (we don't ping CoinGecko to check)
@@ -280,7 +283,8 @@ export class CoinGeckoAdapter implements ProviderAdapter {
     // ── Execute HTTP request ──────────────────────────────────────────────
     let response: Response;
     try {
-      response = await fetch(url.toString(), {
+      const runFetch = this.fetchFn ?? globalThis.fetch;
+      response = await runFetch(url.toString(), {
         method: "GET",
         headers: {
           "x-cg-demo-api-key": this.apiKey,

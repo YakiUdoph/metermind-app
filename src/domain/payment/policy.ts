@@ -1,4 +1,5 @@
 import type { PaymentRequest, PaymentPolicyCheck } from "./types";
+import { BuyContract, verifyBuyContract } from "./contract";
 
 export interface PolicyParams {
   provider: {
@@ -10,6 +11,8 @@ export interface PolicyParams {
     isExcluded?: boolean;
   };
   alreadyPaidKeys: { has: (key: string) => boolean };
+  /** Live execution must set this only when backed by a durable store. */
+  idempotencyStoreReady?: boolean;
   maxTransactionAmount: number; // e.g. 0.05
   allowedAssets: string[]; // e.g. ["USDC"]
   allowedNetworks: string[]; // e.g. ["GOAT-Testnet"]
@@ -17,7 +20,7 @@ export interface PolicyParams {
 }
 
 export function verifyPaymentPolicy(
-  request: PaymentRequest,
+  request: PaymentRequest & { buyContract?: BuyContract },
   params: PolicyParams,
 ): {
   approved: boolean;
@@ -33,6 +36,7 @@ export function verifyPaymentPolicy(
     allowedAssets,
     allowedNetworks,
     remainingTaskBudget,
+    idempotencyStoreReady = true,
   } = params;
 
   const checks: PaymentPolicyCheck[] = [];
@@ -151,6 +155,15 @@ export function verifyPaymentPolicy(
       : "Duplicate payment detected: this transaction key is already settled.",
   );
 
+  const idempotencyReliable = provider.mode !== "live" || idempotencyStoreReady;
+  addCheck(
+    "IDEMPOTENCY_STORE_READY",
+    idempotencyReliable,
+    idempotencyReliable
+      ? "Idempotency state is available for this execution mode."
+      : "Live payment blocked: durable idempotency state is not configured.",
+  );
+
   // 11. Idempotency key is present
   const hasIdempotency = !!idempotencyKey && idempotencyKey.trim().length > 0;
   addCheck(
@@ -169,6 +182,47 @@ export function verifyPaymentPolicy(
     idsPresent
       ? "taskId and procurementId are present."
       : "Missing taskId or procurementId.",
+  );
+
+  // 13. If a Buy Contract is provided, verify it is cryptographically valid and untampered
+  let contractValid = true;
+  let contractNotTampered = true;
+
+  if (request.buyContract) {
+    contractValid = verifyBuyContract(request.buyContract);
+    
+    // Check if any of the commercial parameters have been tampered with
+    const providerMatches = request.buyContract.providerId === request.selectedProviderId;
+    const amountMatches = Math.abs(request.buyContract.actualQuotedAmount - request.quote.amount) < 0.000001;
+    const currencyMatches = request.buyContract.currency.toUpperCase() === request.quote.asset.toUpperCase();
+    const networkMatches = request.buyContract.network.toLowerCase() === request.quote.network.toLowerCase();
+    const recipientMatches = request.buyContract.recipient.toLowerCase() === request.quote.paymentDestination.toLowerCase();
+    const idempotencyMatches = request.buyContract.idempotencyKey === request.idempotencyKey;
+    const quoteIdMatches = !!request.quote.quoteId && request.buyContract.quoteId === request.quote.quoteId;
+    const tokenMatches = !!request.quote.tokenContractAddress &&
+      request.buyContract.tokenContractAddress?.toLowerCase() === request.quote.tokenContractAddress.toLowerCase();
+    const chainMatches = request.quote.chainId !== undefined && request.buyContract.chainId === request.quote.chainId;
+    const payerMatches = !!request.quote.payerAddress &&
+      request.buyContract.payerAddress?.toLowerCase() === request.quote.payerAddress.toLowerCase();
+    
+    contractNotTampered = providerMatches && amountMatches && currencyMatches && networkMatches &&
+      recipientMatches && idempotencyMatches && quoteIdMatches && tokenMatches && chainMatches && payerMatches;
+  }
+
+  addCheck(
+    "CONTRACT_VALID",
+    contractValid,
+    request.buyContract
+      ? (contractValid ? "Buy Contract signature is cryptographically valid." : "Buy Contract signature is invalid or corrupted.")
+      : "No Buy Contract provided (skipped verification)."
+  );
+
+  addCheck(
+    "CONTRACT_NOT_TAMPERED",
+    contractNotTampered,
+    request.buyContract
+      ? (contractNotTampered ? "Buy Contract commercial terms match request parameters (untampered)." : "Buy Contract commercial terms have been altered after authorization (tampered).")
+      : "No Buy Contract provided (skipped verification)."
   );
 
   const approved = checks.every((c) => c.passed);
@@ -205,6 +259,9 @@ export function verifyPaymentPolicy(
     } else if (!networkAllowed) {
       errorCode = "PAYMENT_NETWORK_NOT_ALLOWED";
       errorMessageSafe = `Network ${quote.network} is not permitted.`;
+    } else if (!idempotencyReliable) {
+      errorCode = "PAYMENT_IDEMPOTENCY_NOT_READY";
+      errorMessageSafe = "Live payment blocked because durable idempotency state is unavailable.";
     } else if (!hasIdempotency) {
       errorCode = "PAYMENT_QUOTE_INVALID";
       errorMessageSafe = "Idempotency key is missing.";
@@ -214,6 +271,12 @@ export function verifyPaymentPolicy(
     } else if (!idsPresent) {
       errorCode = "PAYMENT_QUOTE_INVALID";
       errorMessageSafe = "Missing taskId or procurementId.";
+    } else if (!contractValid) {
+      errorCode = "PAYMENT_CONTRACT_INVALID";
+      errorMessageSafe = "Buy Contract is invalid or corrupted.";
+    } else if (!contractNotTampered) {
+      errorCode = "PAYMENT_CONTRACT_TAMPERED";
+      errorMessageSafe = "Buy Contract commercial terms have been tampered with.";
     }
 
     return { approved: false, checks, errorCode, errorMessageSafe };
