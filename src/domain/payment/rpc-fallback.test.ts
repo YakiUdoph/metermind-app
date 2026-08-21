@@ -13,11 +13,34 @@ import { JsonRpcProvider, Wallet } from "ethers";
 import { hashBuyContract } from "./contract";
 import type { BuyContract } from "./contract";
 import { makeTestPrivateKey } from "./test-credentials";
+import { DurablePaymentLedger } from "../../server/payment/durable-idempotency";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("MeterMind RPC Fallback Suite", () => {
   const privateKey = makeTestPrivateKey("rpc-fallback");
   const receiver = "0x789C402PaidResearchMerchantAddress0000";
   const token = "0x3022b87ac063DE95b1570F46f5e470F8B53112D8";
+
+  it("persists live idempotency and blocks unknown/order-created retries across restart", () => {
+    const directory = mkdtempSync(join(tmpdir(), "metermind-ledger-"));
+    const file = join(directory, "ledger.json");
+    try {
+      const firstProcess = new DurablePaymentLedger(file);
+      firstProcess.reserve("restart-safe-key", "contract-hash");
+      firstProcess.update("restart-safe-key", "ORDER_CREATED", { orderId: "order-1" });
+
+      const restartedProcess = new DurablePaymentLedger(file);
+      assert.equal(restartedProcess.get("restart-safe-key")?.orderId, "order-1");
+      assert.equal(restartedProcess.retryRequiresReconciliation("restart-safe-key"), true);
+      assert.throws(() => restartedProcess.reserve("restart-safe-key"), /IDEMPOTENCY_RETRY_BLOCKED_ORDER_CREATED/);
+      restartedProcess.update("restart-safe-key", "SUBMISSION_UNKNOWN");
+      assert.equal(new DurablePaymentLedger(file).retryRequiresReconciliation("restart-safe-key"), true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 
   function contractFor(idempotencyKey: string): BuyContract {
     const base: Omit<BuyContract, "contractHash"> = {

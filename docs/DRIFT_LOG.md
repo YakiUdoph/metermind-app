@@ -111,3 +111,33 @@ This document records the discovered inconsistencies between expected product de
 * **Proposed Fix/Remediation**: Hash acceptance evidence into `PreparedReputationFeedback`; keep all ERC-8004 writes disabled.
 * **Regression Test Case**: Phase 3 delivery acceptance feedback preparation test.
 * **Current Status**: Preparation resolved in Phase 3.1B; submission remains `NOT IMPLEMENTED`.
+
+### Drift Entry 11: Contradictory GOAT Merchant Intent Paths
+* **Date of Discovery**: 2026-08-20
+* **Affected Component**: `goat-client.ts` and `goatflow-client.ts`
+* **Expected Behavior**: One authority supplies order terms and settlement state.
+* **Actual Behavior**: AgentKit merchant-intent and GoatFlow order clients used different endpoints and schemas.
+* **Root Cause**: Two integration experiments lacked a finalized ownership boundary.
+* **Proposed Fix/Remediation**: GoatFlow owns merchant/order/status terms; AgentKit is payer-only after contract verification and authorization.
+* **Regression Test Case**: Phase 3.1C preflight and durable-ledger restart test.
+* **Current Status**: Boundary decided; broadcast wiring remains blocked.
+
+### Drift Entry 12: Gateway Minimum Exceeds Safety Ceiling
+* **Date of Discovery**: 2026-08-20
+* **Affected Component**: GoatFlow merchant order API and payment policy
+* **Expected Behavior**: A merchant-supported amount fits MeterMind's live ceiling.
+* **Actual Behavior**: Minimum is 0.1 USDC, the ceiling is 0.05, and merchant fee balance is $0 against $0.05 required.
+* **Root Cause**: Live merchant economics had not previously been queried.
+* **Proposed Fix/Remediation**: Fund the merchant fee balance, then explicitly authorize any ceiling change to exactly 0.1 USDC.
+* **Regression Test Case**: `scratch/goat-payment-live-preflight.ts`.
+* **Current Status**: `BLOCKED`; no order, signature, or broadcast.
+
+### Drift Entry 13: Implicit Live Ceiling and Missing Commercial Minimum
+* **Date of Discovery**: 2026-08-21
+* **Affected Component**: Wallet configuration, paid-research adapter, and payment preview
+* **Expected Behavior**: Budget, merchant minimum, and platform safety ceiling are independent constraints with explicit provenance and one-purchase authorization.
+* **Actual Behavior**: A hard-coded 0.05 ceiling conflicted with GOAT's 0.10 minimum; merchant minimum/source and an authorization preview were not modeled.
+* **Root Cause**: The original safety constant predated live merchant economics.
+* **Proposed Fix/Remediation**: Centralize a non-escalating 0.10 Testnet3 policy, model live merchant terms, reject sub-minimum budgets, and require an order-bound frozen Buy Contract before preview.
+* **Regression Test Case**: `src/domain/payment/live-payment-policy.test.ts`.
+* **Current Status**: Software drift resolved; external merchant fee remains `BLOCKED`.

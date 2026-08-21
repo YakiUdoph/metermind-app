@@ -41,8 +41,9 @@ export interface GoatExecutionResult {
 }
 
 /**
- * Executes a real GOAT Network / x402 payment flow using the official AgentKit SDK.
- * Blocks execution if credentials, RPC network, or merchant setups are incomplete.
+ * Legacy broadcast executor retained behind fail-closed readiness policy.
+ * GoatFlow is the canonical merchant quote/order/status authority; AgentKit is
+ * only the eventual payer signing/transfer mechanism in an authorized phase.
  */
 export async function executeGoatPayment(
   req: GoatExecutionRequest

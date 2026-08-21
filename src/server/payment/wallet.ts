@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { Wallet, JsonRpcProvider, Contract } from "ethers";
+import { LIVE_PAYMENT_POLICY } from "../../domain/payment/live-payment-policy";
 
 export interface WalletSignerConfig {
   privateKey?: string | undefined;
@@ -13,9 +14,10 @@ export function getWalletConfig(): WalletSignerConfig {
   const mnemonic = process.env["WALLET_MNEMONIC"];
   const paymentMode = (process.env["PAYMENT_MODE"] === "live" ? "live" : "simulation") as "simulation" | "live";
   
-  // Hard maximum live limit of 0.05
-  const envLimit = process.env["MAX_LIVE_PAYMENT_USD"] ? parseFloat(process.env["MAX_LIVE_PAYMENT_USD"]) : 0.05;
-  const maxLivePayment = isNaN(envLimit) ? 0.05 : Math.min(envLimit, 0.05);
+  // TESTNET DEMO SAFETY LIMIT, not a general production spending limit.
+  // Configuration may lower this value but can never silently raise it above 0.10 USDC.
+  const envLimit = process.env["MAX_LIVE_PAYMENT_USD"] ? parseFloat(process.env["MAX_LIVE_PAYMENT_USD"]) : LIVE_PAYMENT_POLICY.maxSinglePaymentUsdc;
+  const maxLivePayment = isNaN(envLimit) ? LIVE_PAYMENT_POLICY.maxSinglePaymentUsdc : Math.min(envLimit, LIVE_PAYMENT_POLICY.maxSinglePaymentUsdc);
  
   return {
     privateKey,

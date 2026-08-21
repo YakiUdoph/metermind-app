@@ -403,7 +403,7 @@ function RunTaskPage() {
               <h3 className="text-[18px] font-medium text-paper">x402 Payment Preview</h3>
               <p className="text-[13px] leading-relaxed text-smoke">
                 {walletStatus?.mode === "live"
-                  ? "The procurement plan selected a paid provider. Live execution remains blocked until a frozen Buy Contract, durable idempotency, and real merchant receiver are configured."
+                  ? "The procurement plan selected a paid provider. READY FOR TESTNET AUTHORIZATION only after merchant fee, balances, frozen Buy Contract, and durable idempotency are verified. Authorization is for one purchase only."
                   : "The procurement plan selected the controlled simulated paid provider. This authorization runs a local simulation and does not send funds or create a blockchain transaction."}
               </p>
               
@@ -455,7 +455,7 @@ function RunTaskPage() {
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Check size={12} className="text-emerald-400 shrink-0" />
-                    <span>Transaction amount complies with safety limits (Max: {walletStatus?.maxPayment || 0.05} USDC).</span>
+                    <span>Transaction amount complies with the Testnet3 demo safety limit (Max: {walletStatus?.maxPayment || 0.1} USDC).</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Check size={12} className="text-emerald-400 shrink-0" />
@@ -946,7 +946,7 @@ function RunTaskPage() {
           {mode === "simple" && step >= 5 && isSuccess ? (
             <ul className="mono-num mt-4 space-y-1 rounded-lg border border-border bg-void px-3 py-3 text-[12px] text-fog">
               <li>→ Preparing purchase authorization…</li>
-              <li>→ Executing simulated transaction of ${winner?.price !== undefined ? winner.price.toFixed(3) : "N/A"} via x402 rail…</li>
+              <li>→ SIMULATED PAYMENT of ${winner?.price !== undefined ? winner.price.toFixed(3) : "N/A"} via x402 rail…</li>
               <li>→ Payment confirmed ✓</li>
               <li>→ Service execution verified ✓</li>
               <li>→ Complete · estimated savings ${result?.estimatedSavings !== undefined ? result.estimatedSavings.toFixed(3) : "0.000"}</li>

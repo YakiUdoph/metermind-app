@@ -1,7 +1,8 @@
 import type { ProviderAdapter, ServiceExecutionRequest, ServiceExecutionResult } from "../../domain/execution/types";
 import type { ServiceCategory } from "../../domain/planning/types";
 import { executeGoatPayment } from "../payment/goat-client";
-import { isWalletConfigured } from "../payment/wallet";
+import { getWalletConfig, isWalletConfigured } from "../payment/wallet";
+import { LIVE_PAYMENT_POLICY } from "../../domain/payment/live-payment-policy";
 
 export const PAID_RESEARCH_PROVIDER_ID = "paidresearchapi";
 export const PAID_RESEARCH_MERCHANT_ADDRESS = "NOT_CONFIGURED";
@@ -44,10 +45,10 @@ export class PaidResearchAdapter implements ProviderAdapter {
         paymentDestination: getPaidResearchMerchantAddress(),
       },
       policyParams: {
-        maxTransactionAmount: 0.05,
+        maxTransactionAmount: getWalletConfig().maxLivePayment,
         allowedAssets: ["USDC"],
-        allowedNetworks: ["GOAT-Testnet"],
-        remainingTaskBudget: 1.0,
+        allowedNetworks: [LIVE_PAYMENT_POLICY.network],
+        remainingTaskBudget: request.allocatedBudget,
       }
     });
 

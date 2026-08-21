@@ -41,3 +41,17 @@ This document records major architectural decisions, library additions, or testi
 * **Category**: Trust / Runtime Boundary
 * **Decision**: Live ERC-8004 reads use the installed AgentKit actions behind an explicitly injected `TrustDataProvider`. Deterministic flows do not initiate network reads implicitly. On-chain identity, fixture data, missing configuration, and unavailable reads carry distinct provenance. A verified identity may influence highest-trust ranking, but absent feedback never becomes a numeric reputation score.
 * **Consequences**: Live failures cannot fall back to fixtures; minimum-reputation policies fail closed without an actual score; feedback preparation is separate from any write authorization.
+
+## Decision 6: GoatFlow-Authoritative Direct Payment Boundary
+
+* **Date**: 2026-08-20
+* **Category**: Payment Architecture / Safety
+* **Decision**: GoatFlow supplies merchant configuration, order terms, and settlement status. AgentKit may perform payer signing/transfer only after a future authorized phase verifies those terms against a frozen Buy Contract. An atomic filesystem ledger is sufficient for the single controlled local demo and blocks uncertain retries across restart.
+* **Consequences**: The legacy AgentKit merchant-intent shape cannot override GoatFlow terms. Phase 3.1C initially remained blocked by zero merchant fee balance and the 0.10-USDC gateway minimum exceeding the then-current 0.05 ceiling; Decision 7 supersedes that ceiling with an explicit 0.10 Testnet3-only policy.
+
+## Decision 7: One-Purchase Testnet Authorization Policy
+
+* **Date**: 2026-08-21
+* **Category**: Payment Safety / Commercial Terms
+* **Decision**: GOAT Testnet3 chain 48816 is the only live-authorizable network. The demo ceiling is exactly 0.10 USDC, may be lowered but not raised by environment configuration, and authorizes at most one purchase per explicit authorization. Merchant-derived minimum, token, recipient, real order, frozen Buy Contract, balances, and durable idempotency are mandatory. Mainnet remains blocked.
+* **Consequences**: User budget and platform ceiling stay independent. Real Testnet3 commercial terms do not reclassify the paid service itself beyond `CONTROLLED_DEMO_SERVICE`. No order is probed while merchant fee funding is known insufficient, and no authorization preview can claim readiness without an order-bound Buy Contract.

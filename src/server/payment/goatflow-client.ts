@@ -1,5 +1,6 @@
 import { GoatFlowClient } from "goatflow-sdk-server";
 import type { MerchantInfo, Order, OrderProof } from "goatflow-sdk-server";
+import { DurablePaymentLedger, type DurablePaymentState } from "./durable-idempotency";
 
 let clientInstance: GoatFlowClient | null = null;
 
@@ -73,4 +74,29 @@ export async function getGoatFlowOrderStatus(orderId: string): Promise<OrderProo
     throw new Error("GoatFlowClient not configured on the server.");
   }
   return await client.getOrderStatus(orderId);
+}
+
+export function durableStateForGoatFlowStatus(status: OrderProof["status"]): DurablePaymentState {
+  if (status === "PAYMENT_CONFIRMED" || status === "INVOICED") return "SETTLED";
+  if (status === "FAILED") return "FAILED";
+  if (status === "EXPIRED") return "EXPIRED";
+  if (status === "CANCELLED") return "CANCELLED";
+  return "ORDER_CREATED";
+}
+
+export async function reconcileGoatFlowPayment(
+  idempotencyKey: string,
+  ledger = new DurablePaymentLedger(),
+): Promise<DurablePaymentState> {
+  const record = ledger.get(idempotencyKey);
+  if (!record?.orderId) throw new Error("IDEMPOTENCY_ORDER_ID_MISSING");
+  try {
+    const order = await getGoatFlowOrderStatus(record.orderId);
+    const state = durableStateForGoatFlowStatus(order.status);
+    ledger.update(idempotencyKey, state, order.txHash ? { transactionHash: order.txHash } : {});
+    return state;
+  } catch (error) {
+    ledger.update(idempotencyKey, "SUBMISSION_UNKNOWN");
+    throw error;
+  }
 }

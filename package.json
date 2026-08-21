@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "validate:foundation": "npx tsx --test --test-concurrency=1 src/domain/execution/coingecko.test.ts src/domain/execution/execution.test.ts src/domain/execution/live-competition.test.ts src/domain/payment/payment.test.ts src/domain/planning/planning.test.ts src/domain/procurement/scoring.test.ts src/domain/payment/contract.test.ts src/domain/payment/rpc-fallback.test.ts src/domain/procurement/procurement-intelligence.test.ts src/domain/procurement/procurement-proof.test.ts src/domain/procurement/phase3.test.ts",
+    "validate:foundation": "npx tsx --test --test-concurrency=1 src/domain/execution/coingecko.test.ts src/domain/execution/execution.test.ts src/domain/execution/live-competition.test.ts src/domain/payment/payment.test.ts src/domain/payment/live-payment-policy.test.ts src/domain/planning/planning.test.ts src/domain/procurement/scoring.test.ts src/domain/payment/contract.test.ts src/domain/payment/rpc-fallback.test.ts src/domain/procurement/procurement-intelligence.test.ts src/domain/procurement/procurement-proof.test.ts src/domain/procurement/phase3.test.ts",
     "validate:metermind": "npx tsx --test src/domain/execution/execution.test.ts src/domain/payment/payment.test.ts src/domain/planning/planning.test.ts src/domain/procurement/scoring.test.ts src/domain/payment/contract.test.ts src/domain/payment/rpc-fallback.test.ts src/domain/procurement/procurement-intelligence.test.ts src/domain/procurement/procurement-proof.test.ts src/domain/procurement/phase3.test.ts",
     "validate:live": "npx tsx scratch/torture-test.ts",
     "format": "prettier --write ."
